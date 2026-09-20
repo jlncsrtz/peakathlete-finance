@@ -44,12 +44,12 @@ return (
   <main className="login-page">
     <section className="login-card">
       <div className="login-brand">
-      <img
-        src="/peakathlete-logo.png"
-        alt="PeakAthlete"
-        className="login-logo"
-      />
-    </div>
+        <img
+          src="/peakathlete-logo.png"
+          alt="PeakAthlete"
+          className="login-logo"
+        />
+      </div>
 
         <div className="login-heading">
           <p>SECURE ACCESS</p>

@@ -1011,6 +1011,22 @@ table { border-top: 1px solid #262a26; } thead { background: #101210; } th { hei
   padding: 28px 18px;
 }
 
+.login-brand {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+}
+
+.login-logo {
+  width: 150px;
+  height: auto;
+  max-width: 100%;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto;
+}
+
 .login-card {
   width: min(100%, 430px);
   border: 1px solid #292d29;
@@ -1018,13 +1034,6 @@ table { border-top: 1px solid #262a26; } thead { background: #101210; } th { hei
   background: rgba(18, 20, 18, 0.97);
   padding: 30px;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
-}
-
-.login-brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 34px;
 }
 
 .login-emblem {
