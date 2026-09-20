@@ -271,7 +271,7 @@ function monthLabel(
     );
 
   if (!match) {
-    return "selected month";
+    return "Month";
   }
 
   const year =
@@ -292,14 +292,13 @@ function monthLabel(
       date.getTime(),
     )
   ) {
-    return "selected month";
+    return "Month";
   }
 
   return new Intl.DateTimeFormat(
     "en-PH",
     {
-      month: "long",
-      year: "numeric",
+      month: "short",
     },
   ).format(date);
 }
