@@ -9,7 +9,6 @@ import {
   useMemo,
   useState,
 } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   Banknote,
@@ -22,7 +21,6 @@ import {
   FileImage,
   LayoutDashboard,
   Loader2,
-  LogOut,
   Package,
   Pencil,
   Plus,
@@ -40,7 +38,6 @@ import {
   FinanceSuite,
   type FinanceView,
 } from "@/components/finance-suite";
-import { getSupabaseBrowser } from "@/lib/supabase-browser";
 
 import {
   AlertDialog,
@@ -105,8 +102,6 @@ type View =
   | "overview"
   | "expenses"
   | FinanceView;
-
-type DateFilterMode = "all" | "month" | "date";
 
 type Expense = {
   id: string;
@@ -211,28 +206,6 @@ const paymentStatuses = [
   "Paid",
 ];
 
-const MONTH_OPTIONS = [
-  { value: "01", label: "January" },
-  { value: "02", label: "February" },
-  { value: "03", label: "March" },
-  { value: "04", label: "April" },
-  { value: "05", label: "May" },
-  { value: "06", label: "June" },
-  { value: "07", label: "July" },
-  { value: "08", label: "August" },
-  { value: "09", label: "September" },
-  { value: "10", label: "October" },
-  { value: "11", label: "November" },
-  { value: "12", label: "December" },
-] as const;
-
-const CURRENT_YEAR = new Date().getFullYear();
-
-const YEAR_OPTIONS = Array.from(
-  { length: 21 },
-  (_, index) => String(CURRENT_YEAR - 10 + index),
-);
-
 const peso =
   new Intl.NumberFormat(
     "en-PH",
@@ -271,7 +244,7 @@ function monthLabel(
     );
 
   if (!match) {
-    return "Month";
+    return "selected month";
   }
 
   const year =
@@ -292,13 +265,14 @@ function monthLabel(
       date.getTime(),
     )
   ) {
-    return "Month";
+    return "selected month";
   }
 
   return new Intl.DateTimeFormat(
     "en-PH",
     {
-      month: "short",
+      month: "long",
+      year: "numeric",
     },
   ).format(date);
 }
@@ -370,9 +344,13 @@ function initialDraft(): Draft {
 
     vendor: "",
 
-    expenseType: "",
+    expenseType:
+      "Operating Expense",
 
-    category: "",
+    category:
+      categories[
+        "Operating Expense"
+      ][0],
 
     subcategory: "",
 
@@ -402,16 +380,19 @@ function initialDraft(): Draft {
 
 function BrandMark() {
   return (
-    <div className="brand-mark" aria-label="PeakAthlete">
-      <img
-        src="/peakathlete-logo.png"
-        alt="PA"
-        className="brand-emblem-image"
-      />
+    <div
+      className="brand-mark"
+      aria-label="PeakAthlete"
+    >
+      <span className="brand-emblem">
+        PA
+      </span>
 
       <span className="brand-name">
         PEAK
-        <span>ATHLETE</span>
+        <span>
+          ATHLETE
+        </span>
         <i />
       </span>
     </div>
@@ -423,8 +404,6 @@ function BrandMark() {
 ========================= */
 
 export default function Home() {
-  const router = useRouter();
-
   const [
     view,
     setView,
@@ -458,19 +437,10 @@ export default function Home() {
     );
 
   const [
-    dateFilterMode,
-    setDateFilterMode,
-  ] = useState<DateFilterMode>("month");
-
-  const [
-    specificDate,
-    setSpecificDate,
-  ] = useState(today());
-
-  const [
-    dateFilterOpen,
-    setDateFilterOpen,
-  ] = useState(false);
+    monthInput,
+    setMonthInput,
+  ] =
+    useState(month);
 
   const [
     loading,
@@ -560,51 +530,6 @@ export default function Home() {
     view === "overview" ||
     view === "expenses";
 
-  const selectedDateYear =
-    specificDate.slice(0, 4) || String(CURRENT_YEAR);
-
-  const selectedDateMonth =
-    specificDate.slice(5, 7) || "01";
-
-  const selectedDateDay =
-    specificDate.slice(8, 10) || "01";
-
-  const dayOptions = Array.from(
-    {
-      length: new Date(
-        Number(selectedDateYear),
-        Number(selectedDateMonth),
-        0,
-      ).getDate(),
-    },
-    (_, index) => String(index + 1).padStart(2, "0"),
-  );
-
-  const periodLabel =
-    dateFilterMode === "all"
-      ? "All dates"
-      : dateFilterMode === "date"
-        ? dateLabel(specificDate)
-        : monthLabel(month);
-
-  const changeSpecificDate = (
-    nextYear: string,
-    nextMonth: string,
-    nextDay: string,
-  ) => {
-    const maxDay = new Date(
-      Number(nextYear),
-      Number(nextMonth),
-      0,
-    ).getDate();
-
-    const safeDay = String(
-      Math.min(Math.max(Number(nextDay) || 1, 1), maxDay),
-    ).padStart(2, "0");
-
-    setSpecificDate(`${nextYear}-${nextMonth}-${safeDay}`);
-  };
-
   const viewTitles:
     Record<
       View,
@@ -691,19 +616,35 @@ export default function Home() {
     );
 
   const knownCategories =
-    useMemo(() => {
-      const suggested = draft.expenseType
-        ? categories[draft.expenseType] ?? []
-        : Object.values(categories).flat();
+    useMemo(
+      () =>
+        Array.from(
+          new Set([
+            ...(
+              categories[
+                draft
+                  .expenseType
+              ] ?? []
+            ),
 
-      const saved = draft.expenseType
-        ? expenses
-            .filter((item) => item.expenseType === draft.expenseType)
-            .map((item) => item.category)
-        : expenses.map((item) => item.category);
+            ...expenses
+              .filter(
+                (item) =>
+                  item.expenseType ===
+                  draft.expenseType,
+              )
+              .map(
+                (item) =>
+                  item.category,
+              ),
+          ]),
+        ),
 
-      return Array.from(new Set([...suggested, ...saved].filter(Boolean)));
-    }, [draft.expenseType, expenses]);
+      [
+        draft.expenseType,
+        expenses,
+      ],
+    );
 
   /* =========================
      LOAD EXPENSES
@@ -715,16 +656,11 @@ export default function Home() {
         setLoading(true);
 
         try {
-          const query =
-            dateFilterMode === "all"
-              ? "range=all"
-              : dateFilterMode === "date"
-                ? `date=${encodeURIComponent(specificDate)}`
-                : `month=${encodeURIComponent(month)}`;
-
           const response =
             await fetch(
-              `/api/expense-data?${query}`,
+              `/api/expense-data?month=${encodeURIComponent(
+                month,
+              )}`,
               {
                 cache:
                   "no-store",
@@ -784,11 +720,7 @@ export default function Home() {
         }
       },
 
-      [
-        dateFilterMode,
-        month,
-        specificDate,
-      ],
+      [month],
     );
 
   useEffect(() => {
@@ -1182,9 +1114,6 @@ export default function Home() {
                     receiptUrl,
 
                     amountPaid,
-
-                    paymentStatus:
-                      draft.paymentStatus,
                   },
                 ),
             },
@@ -1539,24 +1468,6 @@ export default function Home() {
     summary,
   ]);
 
-  const logout = async () => {
-    try {
-      const supabase = getSupabaseBrowser();
-      const { error } = await supabase.auth.signOut();
-
-      if (error) throw error;
-
-      router.replace("/login");
-      router.refresh();
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Couldn’t log out. Please try again.",
-      );
-    }
-  };
-
   /* =========================
      UI
   ========================= */
@@ -1824,16 +1735,6 @@ export default function Home() {
             />
           </button>
 
-          <button
-            type="button"
-            className="logout-button"
-            onClick={() => void logout()}
-          >
-            <span>Account</span>
-            <strong>Log out</strong>
-            <LogOut size={16} />
-          </button>
-
           <p>
             PeakAthlete Finance
           </p>
@@ -1865,197 +1766,76 @@ export default function Home() {
           </div>
 
           <div className="topbar-actions">
-            {view !== "reports" && (
-              <div className="compact-date-filter">
-              <button
-                type="button"
-                className={`compact-date-button ${dateFilterOpen ? "open" : ""}`}
-                onClick={() => setDateFilterOpen((open) => !open)}
-                aria-expanded={dateFilterOpen}
-                aria-label="Open date filter"
-              >
-                <CalendarDays size={18} />
-                <span>{periodLabel}</span>
-                <ChevronDown size={15} />
-              </button>
+            <label
+              className="month-picker"
+              aria-label="Select month"
+            >
+              <CalendarDays
+                size={17}
+              />
 
-              {dateFilterOpen && (
-                <div className="compact-date-popover">
-                  <div className="date-popover-header">
-                    <div>
-                      <span>Date filter</span>
-                      <strong>{periodLabel}</strong>
-                    </div>
+              <input
+                type="month"
+                value={monthInput}
+                onClick={(event) => {
+                  try {
+                    event.currentTarget.showPicker?.();
+                  } catch {
+                    // Native picker is not available in every browser.
+                  }
+                }}
+                onChange={(
+                  event,
+                ) => {
+                  const value =
+                    event.target
+                      .value;
 
-                    <button
-                      type="button"
-                      className="date-popover-close"
-                      onClick={() => setDateFilterOpen(false)}
-                      aria-label="Close date filter"
-                    >
-                      ×
-                    </button>
-                  </div>
+                  setMonthInput(
+                    value,
+                  );
 
-                  <div className="date-mode-grid" role="group" aria-label="Date filter mode">
-                    <button
-                      type="button"
-                      className={`date-mode-button ${dateFilterMode === "all" ? "active" : ""}`}
-                      onClick={() => setDateFilterMode("all")}
-                    >
-                      All
-                    </button>
+                  if (
+                    /^(\d{4})-(0[1-9]|1[0-2])$/.test(
+                      value,
+                    )
+                  ) {
+                    setMonth(
+                      value,
+                    );
+                  }
+                }}
+                onBlur={() => {
+                  if (
+                    !/^(\d{4})-(0[1-9]|1[0-2])$/.test(
+                      monthInput,
+                    )
+                  ) {
+                    setMonthInput(
+                      month,
+                    );
+                  }
+                }}
+                aria-label="Select month"
+              />
 
-                    <button
-                      type="button"
-                      className={`date-mode-button ${dateFilterMode === "month" ? "active" : ""}`}
-                      onClick={() => setDateFilterMode("month")}
-                    >
-                      Month
-                    </button>
-
-                    <button
-                      type="button"
-                      className={`date-mode-button ${dateFilterMode === "date" ? "active" : ""}`}
-                      onClick={() => setDateFilterMode("date")}
-                    >
-                      Date
-                    </button>
-                  </div>
-
-                  {dateFilterMode === "all" && (
-                    <div className="date-filter-summary">
-                      <span>Showing</span>
-                      <strong>All available records</strong>
-                    </div>
-                  )}
-
-                  {dateFilterMode === "month" && (
-                    <div className="date-control-section">
-                      <span className="date-control-label">Choose month</span>
-
-                      <div className="compact-date-row month-row">
-                        <select
-                          className="compact-date-select"
-                          value={month.split("-")[1] || "01"}
-                          onChange={(event) => {
-                            const selectedMonth = event.target.value;
-                            const selectedYear =
-                              month.split("-")[0] || String(CURRENT_YEAR);
-                            setMonth(`${selectedYear}-${selectedMonth}`);
-                          }}
-                          aria-label="Select month"
-                        >
-                          {MONTH_OPTIONS.map((item) => (
-                            <option key={item.value} value={item.value}>
-                              {item.label}
-                            </option>
-                          ))}
-                        </select>
-
-                        <select
-                          className="compact-date-select compact-year-select"
-                          value={month.split("-")[0] || String(CURRENT_YEAR)}
-                          onChange={(event) => {
-                            const selectedYear = event.target.value;
-                            const selectedMonth = month.split("-")[1] || "01";
-                            setMonth(`${selectedYear}-${selectedMonth}`);
-                          }}
-                          aria-label="Select year"
-                        >
-                          {YEAR_OPTIONS.map((year) => (
-                            <option key={year} value={year}>
-                              {year}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  )}
-
-                  {dateFilterMode === "date" && (
-                    <div className="date-control-section">
-                      <span className="date-control-label">Choose date</span>
-
-                      <div className="compact-date-row date-row">
-                        <select
-                          className="compact-date-select"
-                          value={selectedDateMonth}
-                          onChange={(event) =>
-                            changeSpecificDate(
-                              selectedDateYear,
-                              event.target.value,
-                              selectedDateDay,
-                            )
-                          }
-                          aria-label="Select month"
-                        >
-                          {MONTH_OPTIONS.map((item) => (
-                            <option key={item.value} value={item.value}>
-                              {item.label}
-                            </option>
-                          ))}
-                        </select>
-
-                        <select
-                          className="compact-date-select compact-day-select"
-                          value={selectedDateDay}
-                          onChange={(event) =>
-                            changeSpecificDate(
-                              selectedDateYear,
-                              selectedDateMonth,
-                              event.target.value,
-                            )
-                          }
-                          aria-label="Select day"
-                        >
-                          {dayOptions.map((day) => (
-                            <option key={day} value={day}>
-                              {day}
-                            </option>
-                          ))}
-                        </select>
-
-                        <select
-                          className="compact-date-select compact-year-select"
-                          value={selectedDateYear}
-                          onChange={(event) =>
-                            changeSpecificDate(
-                              event.target.value,
-                              selectedDateMonth,
-                              selectedDateDay,
-                            )
-                          }
-                          aria-label="Select year"
-                        >
-                          {YEAR_OPTIONS.map((year) => (
-                            <option key={year} value={year}>
-                              {year}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    className="compact-date-done"
-                    onClick={() => setDateFilterOpen(false)}
-                  >
-                    Apply filter
-                  </button>
-                </div>
-              )}
-            </div>
-            )}
+              <ChevronDown
+                size={15}
+              />
+            </label>
 
             {expenseView && (
               <Button
+                type="button"
                 className="primary-button"
-                onClick={
-                  openNew
-                }
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                }}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  openNew();
+                }}
               >
                 <Plus
                   size={18}
@@ -2090,8 +1870,7 @@ export default function Home() {
                 budgetCents={
                   budgetCents
                 }
-                periodLabel={periodLabel}
-                monthlyBudgetMode={dateFilterMode === "month"}
+                month={month}
                 setView={
                   setView
                 }
@@ -2151,15 +1930,13 @@ export default function Home() {
             )
           ) : (
             <FinanceSuite
-              key={`${dateFilterMode}:${month}:${specificDate}`}
+              key={month}
               view={
                 view as FinanceView
               }
               month={
                 month
               }
-              dateFilterMode={dateFilterMode}
-              specificDate={specificDate}
             />
           )}
         </main>
@@ -2280,8 +2057,7 @@ function Overview({
   expenses,
   summary,
   budgetCents,
-  periodLabel,
-  monthlyBudgetMode,
+  month,
   setView,
   openNew,
   openEdit,
@@ -2304,9 +2080,7 @@ function Overview({
 
   budgetCents: number;
 
-  periodLabel: string;
-
-  monthlyBudgetMode: boolean;
+  month: string;
 
   setView: (
     view: View,
@@ -2359,7 +2133,9 @@ function Overview({
             1
               ? "entry"
               : "entries"
-          } in ${periodLabel}`}
+          } in ${monthLabel(
+            month,
+          )}`}
           accent
         />
 
@@ -2409,30 +2185,24 @@ function Overview({
           }
           label="Budget remaining"
           value={
-            monthlyBudgetMode
-              ? budgetCents
-                ? moneyFromCents(
-                    summary.remaining,
-                  )
-                : "Not set"
-              : "Monthly only"
+            budgetCents
+              ? moneyFromCents(
+                  summary.remaining,
+                )
+              : "Not set"
           }
           note={
-            monthlyBudgetMode
-              ? budgetCents
-                ? `${Math.round(
-                    budgetPercent,
-                  )}% of budget used`
-                : "Set a monthly spending limit"
-              : "Switch to By month to compare with budget"
+            budgetCents
+              ? `${Math.round(
+                  budgetPercent,
+                )}% of budget used`
+              : "Set a monthly spending limit"
           }
           warning={
-            monthlyBudgetMode &&
             summary.remaining <
-              0
+            0
           }
           action={
-            monthlyBudgetMode &&
             !budgetCents
               ? setBudget
               : undefined
@@ -2456,7 +2226,9 @@ function Overview({
             </div>
 
             <span>
-              {periodLabel}
+              {monthLabel(
+                month,
+              )}
             </span>
           </div>
 
@@ -2882,14 +2654,8 @@ function ExpenseTable({
 
   compact?: boolean;
 }) {
-  const [receiptPreview, setReceiptPreview] = useState<{
-    url: string;
-    title: string;
-  } | null>(null);
-
   return (
-    <>
-      <Table>
+    <Table>
       <TableHeader>
         <TableRow>
           <TableHead>
@@ -3023,16 +2789,12 @@ function ExpenseTable({
               <TableCell>
                 <div className="row-actions">
                   {item.receiptUrl && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() =>
-                        setReceiptPreview({
-                          url: item.receiptUrl,
-                          title: `Receipt · ${item.expenseNumber}`,
-                        })
+                    <a
+                      href={
+                        item.receiptUrl
                       }
+                      target="_blank"
+                      rel="noreferrer"
                       aria-label={`View receipt for ${item.expenseNumber}`}
                     >
                       <FileImage
@@ -3040,7 +2802,7 @@ function ExpenseTable({
                           16
                         }
                       />
-                    </Button>
+                    </a>
                   )}
 
                   <Button
@@ -3084,56 +2846,7 @@ function ExpenseTable({
           ),
         )}
       </TableBody>
-      </Table>
-
-      <ReceiptPreviewDialog
-        open={Boolean(receiptPreview)}
-        onOpenChange={(open) => {
-          if (!open) setReceiptPreview(null);
-        }}
-        url={receiptPreview?.url ?? ""}
-        title={receiptPreview?.title ?? "Receipt"}
-      />
-    </>
-  );
-}
-
-function ReceiptPreviewDialog({
-  open,
-  onOpenChange,
-  url,
-  title,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  url: string;
-  title: string;
-}) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="receipt-preview-dialog">
-        <DialogHeader>
-          <p className="eyebrow">RECEIPT PREVIEW</p>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>
-            Receipt image preview inside PeakAthlete Finance.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="receipt-preview-frame">
-          {url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={url}
-              alt={title}
-              className="receipt-preview-image"
-            />
-          ) : (
-            <div className="receipt-preview-empty">Receipt unavailable.</div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+    </Table>
   );
 }
 
@@ -3335,30 +3048,32 @@ function ExpenseDialog({
 
             <Field label="Expense type">
               <EditableChoice
-                value={draft.expenseType}
-                onChange={(value) =>
-                  setDraft({
-                    ...draft,
-                    expenseType: value,
-                    category: "",
-                  })
+                value={
+                  draft.expenseType
                 }
-                options={expenseTypes}
-                placeholder="Type or choose an expense type"
+                onChange={update(
+                  "expenseType",
+                )}
+                options={
+                  expenseTypes
+                }
+                placeholder="Choose or type a new expense type"
                 required
               />
             </Field>
 
             <Field label="Category">
               <EditableChoice
-                value={draft.category}
-                onChange={update("category")}
-                options={categoryOptions}
-                placeholder={
-                  draft.expenseType
-                    ? "Type or choose a category"
-                    : "Type a category or choose an expense type first"
+                value={
+                  draft.category
                 }
+                onChange={update(
+                  "category",
+                )}
+                options={
+                  categoryOptions
+                }
+                placeholder="Choose or type a new category"
                 required
               />
             </Field>
@@ -3464,9 +3179,16 @@ function ExpenseDialog({
             </Field>
 
             <Field label="Payment status">
-              <PaymentStatusChoice
-                value={draft.paymentStatus}
-                onChange={update("paymentStatus")}
+              <Choice
+                value={
+                  draft.paymentStatus
+                }
+                onChange={update(
+                  "paymentStatus",
+                )}
+                options={
+                  paymentStatuses
+                }
               />
             </Field>
 
@@ -3752,35 +3474,61 @@ function EditableChoice({
   onChange,
   options,
   placeholder,
-  required = false,
+  required,
 }: {
   value: string;
-  onChange: (value: string) => void;
+
+  onChange: (
+    value: string,
+  ) => void;
+
   options: string[];
+
   placeholder: string;
+
   required?: boolean;
 }) {
-  const listId = useId();
+  const listId =
+    useId();
 
   return (
     <div className="editable-choice">
       <TextInput
         value={value}
-        onChange={onChange}
+        onChange={
+          onChange
+        }
         list={listId}
-        placeholder={placeholder}
+        placeholder={
+          placeholder
+        }
         autoComplete="off"
-        required={required}
+        required={
+          required
+        }
       />
 
-      <datalist id={listId}>
-        {options.map((option) => (
-          <option key={option} value={option} />
-        ))}
+      <datalist
+        id={listId}
+      >
+        {options.map(
+          (option) => (
+            <option
+              key={
+                option
+              }
+              value={
+                option
+              }
+            />
+          ),
+        )}
       </datalist>
 
       <small>
-        Choose a suggestion or type a new one.
+        Select an
+        option or type
+        your own.
       </small>
     </div>
   );
@@ -3803,8 +3551,6 @@ function ReceiptUpload({
       | null,
   ) => void;
 }) {
-  const [previewOpen, setPreviewOpen] = useState(false);
-
   const chooseFile = (
     event:
       React.ChangeEvent<HTMLInputElement>,
@@ -3855,124 +3601,48 @@ function ReceiptUpload({
   };
 
   return (
-    <>
-      <div className="receipt-upload">
-        <Input
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          onChange={
-            chooseFile
-          }
-        />
-
-        <small>
-          JPG, PNG, or
-          WebP · maximum
-          4 MB
-        </small>
-
-        {file ? (
-          <span>
-            <FileImage
-              size={15}
-            />
-
-            {
-              file.name
-            }
-          </span>
-        ) : existingUrl ? (
-          <button
-            type="button"
-            className="receipt-preview-link"
-            onClick={() => setPreviewOpen(true)}
-          >
-            <FileImage
-              size={15}
-            />
-
-            View current
-            receipt
-          </button>
-        ) : null}
-      </div>
-
-      <ReceiptPreviewDialog
-        open={previewOpen}
-        onOpenChange={setPreviewOpen}
-        url={existingUrl}
-        title="Current receipt"
+    <div className="receipt-upload">
+      <Input
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        onChange={
+          chooseFile
+        }
       />
-    </>
-  );
-}
 
-function paymentStatusTriggerClass(value: string) {
-  if (value === "Unpaid") {
-    return "border-red-500/50 bg-red-500/10 text-red-400 hover:bg-red-500/15";
-  }
+      <small>
+        JPG, PNG, or
+        WebP · maximum
+        4 MB
+      </small>
 
-  if (value === "Partial") {
-    return "border-orange-500/50 bg-orange-500/10 text-orange-400 hover:bg-orange-500/15";
-  }
+      {file ? (
+        <span>
+          <FileImage
+            size={15}
+          />
 
-  if (value === "Paid") {
-    return "border-green-500/50 bg-green-500/10 text-green-400 hover:bg-green-500/15";
-  }
-
-  return "";
-}
-
-function PaymentStatusChoice({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <Select
-      value={value || undefined}
-      onValueChange={onChange}
-    >
-      <SelectTrigger
-        className={`form-select font-semibold ${paymentStatusTriggerClass(value)}`}
-      >
-        <SelectValue placeholder="Select payment status" />
-      </SelectTrigger>
-
-      <SelectContent>
-        <SelectItem
-          value="Unpaid"
-          className="text-red-400 focus:bg-red-500/10 focus:text-red-400"
+          {
+            file.name
+          }
+        </span>
+      ) : existingUrl ? (
+        <a
+          href={
+            existingUrl
+          }
+          target="_blank"
+          rel="noreferrer"
         >
-          <span className="flex items-center gap-2 font-medium">
-            <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
-            Unpaid
-          </span>
-        </SelectItem>
+          <FileImage
+            size={15}
+          />
 
-        <SelectItem
-          value="Partial"
-          className="text-orange-400 focus:bg-orange-500/10 focus:text-orange-400"
-        >
-          <span className="flex items-center gap-2 font-medium">
-            <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />
-            Partial
-          </span>
-        </SelectItem>
-
-        <SelectItem
-          value="Paid"
-          className="text-green-400 focus:bg-green-500/10 focus:text-green-400"
-        >
-          <span className="flex items-center gap-2 font-medium">
-            <span className="h-2.5 w-2.5 rounded-full bg-green-500" />
-            Paid
-          </span>
-        </SelectItem>
-      </SelectContent>
-    </Select>
+          View current
+          receipt
+        </a>
+      ) : null}
+    </div>
   );
 }
 
@@ -3981,9 +3651,6 @@ function Choice({
   onChange,
   options,
   className = "form-select",
-  placeholder = "Select an option",
-  disabled = false,
-  required = false,
 }: {
   value: string;
 
@@ -3994,36 +3661,36 @@ function Choice({
   options: string[];
 
   className?: string;
-
-  placeholder?: string;
-
-  disabled?: boolean;
-
-  required?: boolean;
 }) {
   return (
     <Select
-      value={value || undefined}
-      onValueChange={onChange}
-      disabled={disabled}
-      required={required}
+      value={value}
+      onValueChange={
+        onChange
+      }
     >
       <SelectTrigger
-        className={className}
+        className={
+          className
+        }
       >
-        <SelectValue
-          placeholder={placeholder}
-        />
+        <SelectValue />
       </SelectTrigger>
 
       <SelectContent>
         {options.map(
           (option) => (
             <SelectItem
-              key={option}
-              value={option}
+              key={
+                option
+              }
+              value={
+                option
+              }
             >
-              {option}
+              {
+                option
+              }
             </SelectItem>
           ),
         )}

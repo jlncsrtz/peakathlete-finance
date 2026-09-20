@@ -1742,3 +1742,138 @@ table { border-top: 1px solid #262a26; } thead { background: #101210; } th { hei
     max-width: 86px !important;
   }
 }
+
+
+/* =========================================================
+   FINAL FIX: MOBILE MONTH PICKER + ADD BUTTON
+   Actual topbar uses .month-picker
+   ========================================================= */
+@media (max-width: 640px) {
+  .topbar {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+    min-height: 68px !important;
+    padding: 10px 12px !important;
+  }
+
+  .topbar-title {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+  }
+
+  .topbar-actions {
+    position: relative !important;
+    z-index: 30 !important;
+    display: flex !important;
+    flex: 0 0 auto !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    flex-wrap: nowrap !important;
+    width: auto !important;
+    min-width: auto !important;
+    gap: 6px !important;
+  }
+
+  /* Calendar and + are exactly the same size on mobile */
+  .month-picker {
+    position: relative !important;
+    z-index: 30 !important;
+    display: flex !important;
+    width: 36px !important;
+    min-width: 36px !important;
+    max-width: 36px !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    flex: 0 0 36px !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0 !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border-radius: 10px !important;
+    cursor: pointer !important;
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+  }
+
+  /* Native month input is restricted to the calendar square only */
+  .month-picker input[type="month"] {
+    position: absolute !important;
+    inset: 0 !important;
+    z-index: 2 !important;
+    display: block !important;
+    width: 36px !important;
+    min-width: 36px !important;
+    max-width: 36px !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    opacity: 0 !important;
+    cursor: pointer !important;
+    pointer-events: auto !important;
+  }
+
+  .month-picker > svg {
+    position: relative !important;
+    z-index: 1 !important;
+    width: 17px !important;
+    height: 17px !important;
+    flex: 0 0 17px !important;
+    pointer-events: none !important;
+  }
+
+  .month-picker > svg:first-child {
+    display: block !important;
+  }
+
+  .month-picker > svg:last-child {
+    display: none !important;
+  }
+
+  .topbar-actions > .primary-button {
+    position: relative !important;
+    z-index: 40 !important;
+    display: inline-flex !important;
+    width: 36px !important;
+    min-width: 36px !important;
+    max-width: 36px !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    flex: 0 0 36px !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 10px !important;
+    font-size: 0 !important;
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+  }
+
+  .topbar-actions > .primary-button svg {
+    width: 17px !important;
+    height: 17px !important;
+    margin: 0 !important;
+    pointer-events: none !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .month-picker,
+  .month-picker input[type="month"],
+  .topbar-actions > .primary-button {
+    width: 34px !important;
+    min-width: 34px !important;
+    max-width: 34px !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    flex-basis: 34px !important;
+  }
+}
