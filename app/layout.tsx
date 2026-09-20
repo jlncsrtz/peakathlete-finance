@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   title: "PeakAthlete Finance",
   description:
     "PeakAthlete finance dashboard for expenses, sales, inventory, cash flow, and reporting.",
-  icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
+  icons: { icon: "/peakathlete-logo", shortcut: "/peakathlete-logo.png" },
 };
 
 export default function RootLayout({
