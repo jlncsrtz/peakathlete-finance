@@ -464,7 +464,7 @@ export default function Home() {
   const [
     dateFilterMode,
     setDateFilterMode,
-  ] = useState<DateFilterMode>("date");
+  ] = useState<DateFilterMode>("month");
 
   const [
     specificDate,
