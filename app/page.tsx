@@ -403,19 +403,16 @@ function initialDraft(): Draft {
 
 function BrandMark() {
   return (
-    <div
-      className="brand-mark"
-      aria-label="PeakAthlete"
-    >
-      <span className="brand-emblem">
-        PA
-      </span>
+    <div className="brand-mark" aria-label="PeakAthlete">
+      <img
+        src="/peakathlete-logo.png"
+        alt="PA"
+        className="brand-emblem-image"
+      />
 
       <span className="brand-name">
         PEAK
-        <span>
-          ATHLETE
-        </span>
+        <span>ATHLETE</span>
         <i />
       </span>
     </div>

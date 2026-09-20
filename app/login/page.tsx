@@ -40,19 +40,16 @@ export default function LoginPage() {
       setLoading(false);
     }
   }
-
-  return (
-    <main className="login-page">
-      <section className="login-card">
-        <div className="login-brand">
-          <span className="login-emblem">PA</span>
-          <div>
-            <strong>
-              PEAK<span>ATHLETE</span>
-            </strong>
-            <p>Finance Portal</p>
-          </div>
-        </div>
+return (
+  <main className="login-page">
+    <section className="login-card">
+      <div className="login-brand">
+      <img
+        src="/peakathlete-logo.png"
+        alt="PeakAthlete"
+        className="login-logo"
+      />
+    </div>
 
         <div className="login-heading">
           <p>SECURE ACCESS</p>
