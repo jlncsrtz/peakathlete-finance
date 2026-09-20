@@ -1011,6 +1011,15 @@ table { border-top: 1px solid #262a26; } thead { background: #101210; } th { hei
   padding: 28px 18px;
 }
 
+.login-card {
+  width: min(100%, 430px);
+  border: 1px solid #292d29;
+  border-radius: 20px;
+  background: rgba(18, 20, 18, 0.97);
+  padding: 30px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+}
+
 .login-brand {
   display: flex;
   justify-content: center;
@@ -1025,15 +1034,6 @@ table { border-top: 1px solid #262a26; } thead { background: #101210; } th { hei
   object-fit: contain;
   display: block;
   margin: 0 auto;
-}
-
-.login-card {
-  width: min(100%, 430px);
-  border: 1px solid #292d29;
-  border-radius: 20px;
-  background: rgba(18, 20, 18, 0.97);
-  padding: 30px;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
 }
 
 .login-emblem {
@@ -1203,39 +1203,6 @@ table { border-top: 1px solid #262a26; } thead { background: #101210; } th { hei
   text-align: center;
 }
 
-.brand-mark {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-}
-
-.brand-emblem-image {
-  width: 42px !important;
-  height: 42px !important;
-  min-width: 42px !important;
-  max-width: 42px !important;
-  min-height: 42px !important;
-  max-height: 42px !important;
-
-  object-fit: contain;
-  display: block;
-  flex: 0 0 42px;
-}
-
-.brand-sidebar-header {
-  min-height: auto !important;
-  padding: 20px 16px !important;
-}
-
-.brand-name i {
-  width: 5px;
-  height: 5px;
-  margin-left: 4px;
-  border-radius: 999px;
-  background: #baff2a;
-}
-
 .brand-sidebar-footer .logout-button {
   margin-top: 10px;
   border-color: #252925;
@@ -1267,5 +1234,263 @@ table { border-top: 1px solid #262a26; } thead { background: #101210; } th { hei
 
   .login-heading h1 {
     font-size: 30px;
+  }
+}
+
+
+/* ===== CURRENT BRAND IMAGE OVERRIDES ===== */
+.brand-mark {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.brand-emblem-image {
+  width: 42px !important;
+  height: 42px !important;
+  min-width: 42px !important;
+  max-width: 42px !important;
+  min-height: 42px !important;
+  max-height: 42px !important;
+  object-fit: contain;
+  display: block;
+  flex: 0 0 42px;
+}
+
+.brand-sidebar-header {
+  min-height: auto !important;
+  padding: 20px 16px !important;
+}
+
+.brand-name i {
+  width: 5px;
+  height: 5px;
+  margin-left: 4px;
+  border-radius: 999px;
+  background: #baff2a;
+}
+
+
+/* =========================================================
+   FINAL MOBILE HEADER FIX
+   Keeps the mobile header compact and usable.
+   ========================================================= */
+@media (max-width: 640px) {
+  .topbar {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+    min-height: auto !important;
+    padding: 12px 14px !important;
+  }
+
+  .topbar-title {
+    display: flex !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    align-items: center !important;
+    gap: 10px !important;
+  }
+
+  .topbar-title > div {
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+  }
+
+  .topbar-title p,
+  .topbar-title .eyebrow {
+    display: none !important;
+  }
+
+  .topbar h1 {
+    margin: 0 !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    font-size: 25px !important;
+    line-height: 1.05 !important;
+    letter-spacing: -0.045em !important;
+    white-space: nowrap !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .sidebar-toggle {
+    width: 42px !important;
+    height: 42px !important;
+    min-width: 42px !important;
+    flex: 0 0 42px !important;
+    border-radius: 11px !important;
+  }
+
+  .topbar-actions {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 44px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    align-items: center !important;
+    gap: 8px !important;
+  }
+
+  /* Polished top-right date filter */
+  .compact-date-filter {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .compact-date-button {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 44px !important;
+    padding: 0 12px !important;
+    border-radius: 12px !important;
+    gap: 9px !important;
+  }
+
+  .compact-date-button span {
+    min-width: 0 !important;
+    overflow: hidden !important;
+    font-size: 14px !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .compact-date-button svg {
+    width: 18px !important;
+    height: 18px !important;
+    flex: 0 0 18px !important;
+  }
+
+  /* Add Expense button = compact + icon on mobile */
+  .topbar-actions > .primary-button,
+  .topbar .primary-button {
+    display: inline-flex !important;
+    width: 44px !important;
+    min-width: 44px !important;
+    max-width: 44px !important;
+    height: 44px !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 !important;
+    border-radius: 12px !important;
+    font-size: 0 !important;
+  }
+
+  .topbar-actions > .primary-button svg,
+  .topbar .primary-button svg {
+    width: 20px !important;
+    height: 20px !important;
+    margin: 0 !important;
+  }
+
+  /* Date popup fills the usable mobile width */
+  .compact-date-popover {
+    position: fixed !important;
+    top: 112px !important;
+    right: 12px !important;
+    left: 12px !important;
+    z-index: 999 !important;
+    width: auto !important;
+    max-width: none !important;
+    margin: 0 !important;
+  }
+
+  .compact-date-row.month-row {
+    grid-template-columns: minmax(0, 1fr) 92px !important;
+  }
+
+  .compact-date-row.date-row {
+    grid-template-columns: minmax(0, 1fr) 66px 86px !important;
+  }
+
+  /* Older date controls remain constrained if still rendered anywhere */
+  .month-picker,
+  .month-dropdowns,
+  .date-filter-controls,
+  .native-date-filter-controls {
+    max-width: 100% !important;
+  }
+
+  .page-content {
+    padding: 15px 14px 40px !important;
+  }
+
+  /* Expense cards stay one column */
+  .metrics-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  /* Finance toolbar stays compact */
+  .finance-toolbar {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: start !important;
+    gap: 12px !important;
+    padding: 18px !important;
+  }
+
+  .finance-toolbar > div:first-child {
+    min-width: 0 !important;
+  }
+
+  .finance-toolbar h2 {
+    font-size: 18px !important;
+    line-height: 1.15 !important;
+  }
+
+  .finance-actions {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 6px !important;
+  }
+
+  .finance-actions button {
+    width: 40px !important;
+    min-width: 40px !important;
+    height: 40px !important;
+    padding: 0 !important;
+    justify-content: center !important;
+    font-size: 0 !important;
+  }
+
+  .finance-actions button svg {
+    width: 18px !important;
+    height: 18px !important;
+    margin: 0 !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .topbar {
+    padding: 11px 12px !important;
+  }
+
+  .topbar h1 {
+    font-size: 22px !important;
+  }
+
+  .topbar-actions {
+    grid-template-columns: minmax(0, 1fr) 42px !important;
+  }
+
+  .topbar-actions > .primary-button,
+  .topbar .primary-button {
+    width: 42px !important;
+    min-width: 42px !important;
+    max-width: 42px !important;
+    height: 42px !important;
+  }
+
+  .compact-date-button {
+    height: 42px !important;
+  }
+
+  .compact-date-popover {
+    top: 106px !important;
+    right: 10px !important;
+    left: 10px !important;
   }
 }

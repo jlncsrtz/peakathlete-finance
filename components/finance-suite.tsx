@@ -2,7 +2,7 @@
 
 import { FormEvent, MouseEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, Boxes, CalendarDays, Download, FileBarChart, Loader2, Package, Pencil, Plus, ShoppingCart, Trash2, TrendingUp, Upload, Wallet } from "lucide-react";
+import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, Boxes, CalendarDays, ChevronDown, ChevronRight, Download, FileBarChart, Loader2, Package, Pencil, Plus, ShoppingCart, Trash2, TrendingUp, Upload, Wallet } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -64,17 +64,15 @@ export function FinanceSuite({
   const [status, setStatus] = useState("All statuses");
   const [saleDialog, setSaleDialog] = useState(false);
   const [productDialog, setProductDialog] = useState(false);
-  const [stockDialog, setStockDialog] = useState(false);
   const [importDialog, setImportDialog] = useState(false);
+  const [inventoryImportDialog, setInventoryImportDialog] = useState(false);
   const [saleDraft, setSaleDraft] = useState<SaleDraft>(blankSale);
   const [productDraft, setProductDraft] = useState<ProductDraft>(blankProduct);
   const [editingSale, setEditingSale] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<string | null>(null);
-  const [stockProduct, setStockProduct] = useState<Product | null>(null);
-  const [stockDelta, setStockDelta] = useState("");
-  const [stockReason, setStockReason] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ resource: "order" | "product"; id: string; label: string } | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
+  const [inventoryImportFile, setInventoryImportFile] = useState<File | null>(null);
   const [reportFrom, setReportFrom] = useState(`${month}-01`);
   const [reportTo, setReportTo] = useState(monthEnd(month));
   const [appliedReportFrom, setAppliedReportFrom] = useState(`${month}-01`);
@@ -82,6 +80,7 @@ export function FinanceSuite({
   const [reportReloadKey, setReportReloadKey] = useState(0);
 
   const loadData = useCallback(async () => {
+    void reportReloadKey;
     const initialLoad = !hasLoaded.current;
     if (initialLoad) setLoading(true);
     else setRefreshing(true);
@@ -137,7 +136,7 @@ export function FinanceSuite({
 
   const filteredOrders = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return orders.filter((order) => (!query || [order.orderNumber, order.customerName, order.salesChannel, order.itemsSummary].join(" ").toLowerCase().includes(query)) && (status === "All statuses" || order.orderStatus === status));
+    return orders.filter((order) => (!query || [order.orderNumber, order.customerName, order.salesChannel, order.itemsSummary, order.notes].join(" ").toLowerCase().includes(query)) && (status === "All statuses" || order.orderStatus === status));
   }, [orders, search, status]);
 
   const productSales = useMemo(() => {
@@ -180,16 +179,52 @@ export function FinanceSuite({
     } catch (error) { toast.error(error instanceof Error ? error.message : "Couldn’t save product."); }
     finally { setSaving(false); }
   };
-  const adjustStock = async (event: FormEvent) => {
-    event.preventDefault(); if (!stockProduct) return; setSaving(true);
+  const quickAdjustStock = async (product: Product, quantityDelta: number) => {
+    if (quantityDelta < 0 && product.stockQuantity <= 0) return;
+
     try {
-      const response = await fetch("/api/sales-data", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ resource: "inventory", productId: stockProduct.id, quantityDelta: stockDelta, reason: stockReason }) });
-      const result = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(result.error ?? "Couldn’t adjust stock");
-      await loadData(); setStockDialog(false); toast.success("Stock adjusted");
-    } catch (error) { toast.error(error instanceof Error ? error.message : "Couldn’t adjust stock."); }
-    finally { setSaving(false); }
+      const response = await fetch("/api/sales-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resource: "inventory",
+          productId: product.id,
+          quantityDelta,
+          reason: quantityDelta > 0 ? "Quick stock increase" : "Quick stock decrease",
+        }),
+      });
+
+      const result = await response.json() as { stockQuantity?: number; error?: string };
+
+      if (!response.ok) {
+        throw new Error(result.error ?? "Couldn’t adjust stock");
+      }
+
+      const nextStock =
+        typeof result.stockQuantity === "number"
+          ? result.stockQuantity
+          : Math.max(product.stockQuantity + quantityDelta, 0);
+
+      setData((current) => ({
+        ...current,
+        products: current.products.map((entry) =>
+          entry.id === product.id
+            ? { ...entry, stockQuantity: nextStock }
+            : entry,
+        ),
+      }));
+
+      // Refresh movement history in the background without replacing the whole view.
+      void loadData();
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Couldn’t adjust stock.",
+      );
+    }
   };
+
   const removeRecord = async () => {
     if (!deleteTarget) return;
     try {
@@ -212,34 +247,724 @@ export function FinanceSuite({
     finally { setSaving(false); }
   };
 
+  const importInventory = async (event: FormEvent) => {
+    event.preventDefault(); if (!inventoryImportFile) return; setSaving(true);
+    try {
+      const form = new FormData(); form.append("file", inventoryImportFile);
+      const response = await fetch("/api/inventory-import", { method: "POST", body: form });
+      const result = await response.json() as { imported?: number; updated?: number; skipped?: number; errors?: string[]; error?: string };
+      if (!response.ok) throw new Error(result.error ?? "Couldn’t import inventory");
+      await loadData();
+      setInventoryImportDialog(false);
+      setInventoryImportFile(null);
+      toast.success(`${result.imported ?? 0} new · ${result.updated ?? 0} updated · ${result.skipped ?? 0} skipped`);
+      if (result.errors?.length) toast.warning(result.errors[0]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Couldn’t import inventory.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) return <div className="loading-state"><Loader2 className="spin" size={23} /> Loading finance data…</div>;
   return <>
     {view === "sales" && <SalesView orders={filteredOrders} summary={summary} search={search} setSearch={setSearch} status={status} setStatus={setStatus} add={openNewSale} edit={openSale} remove={(order) => setDeleteTarget({ resource: "order", id: order.id, label: order.orderNumber })} importCsv={() => setImportDialog(true)} />}
-    {view === "products" && <ProductsView products={data.products} movements={data.movements} add={openNewProduct} edit={openProduct} adjust={(product) => { setStockProduct(product); setStockDelta(""); setStockReason(""); setStockDialog(true); }} remove={(product) => setDeleteTarget({ resource: "product", id: product.id, label: product.name })} />}
+    {view === "products" && <ProductsView products={data.products} movements={data.movements} add={openNewProduct} importInventory={() => setInventoryImportDialog(true)} adjustStock={quickAdjustStock} remove={(product) => setDeleteTarget({ resource: "product", id: product.id, label: `${product.name}${product.variant ? ` - ${product.variant}` : ""}` })} />}
     {view === "profit" && <ProfitView summary={summary} orders={completedOrders} />}
     {view === "cashflow" && <CashFlowView summary={summary} orders={activeOrders} expenses={data.expenses} />}
     {view === "reports" && <ReportsView summary={summary} orders={orders} products={data.products} productSales={productSales} expenseCategories={expenseCategories} from={reportFrom} to={reportTo} setFrom={setReportFrom} setTo={setReportTo} refresh={applyReportRange} refreshing={refreshing} />}
     <SaleDialog open={saleDialog} setOpen={setSaleDialog} draft={saleDraft} setDraft={setSaleDraft} products={data.products} editing={Boolean(editingSale)} saving={saving} submit={saveSale} />
     <ProductDialog open={productDialog} setOpen={setProductDialog} draft={productDraft} setDraft={setProductDraft} editing={Boolean(editingProduct)} saving={saving} submit={saveProduct} />
-    <StockDialog open={stockDialog} setOpen={setStockDialog} product={stockProduct} delta={stockDelta} setDelta={setStockDelta} reason={stockReason} setReason={setStockReason} saving={saving} submit={adjustStock} />
     <ImportDialog open={importDialog} setOpen={setImportDialog} file={importFile} setFile={setImportFile} saving={saving} submit={importEnstack} />
+    <InventoryImportDialog open={inventoryImportDialog} setOpen={setInventoryImportDialog} file={inventoryImportFile} setFile={setInventoryImportFile} saving={saving} submit={importInventory} />
     <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete this record?</AlertDialogTitle><AlertDialogDescription>{deleteTarget?.label} will be permanently removed. Stock from fulfilled sales will be restored.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => void removeRecord()}>Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
   </>;
 }
 
 function SalesView({ orders, summary, search, setSearch, status, setStatus, add, edit, remove, importCsv }: { orders: Sale[]; summary: FinanceSummary; search: string; setSearch: (value: string) => void; status: string; setStatus: (value: string) => void; add: () => void; edit: (order: Sale) => void; remove: (order: Sale) => void; importCsv: () => void }) {
-  return <div className="finance-stack"><MetricGrid items={[{ icon: <ShoppingCart />, label: "Completed sales", value: money(summary.grossSales), note: `${orders.filter((order) => order.orderStatus === "Completed").length} completed orders`, accent: true }, { icon: <Wallet />, label: "Cash collected", value: money(summary.paid), note: "Paid and partial collections" }, { icon: <AlertTriangle />, label: "Receivables", value: money(summary.receivables), note: "Customer balances", warning: summary.receivables > 0 }, { icon: <TrendingUp />, label: "Net sales", value: money(summary.netSales), note: "After transaction fees" }]} />
-    <section className="panel finance-table"><div className="finance-toolbar"><div><p className="eyebrow">SALES & ORDERS</p><h2>{orders.length} records</h2></div><div className="finance-actions"><Button variant="outline" onClick={importCsv}><Upload size={16} /> Import Enstack CSV</Button><Button className="primary-button" onClick={add}><Plus size={17} /> Add sale</Button></div></div><div className="finance-filters"><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search order, customer, or product" /><Choice value={status} onChange={setStatus} options={["All statuses", ...orderStatuses]} /></div>
-      {orders.length ? <Table><TableHeader><TableRow><TableHead>Date / Order</TableHead><TableHead>Customer / Channel</TableHead><TableHead>Items</TableHead><TableHead>Status</TableHead><TableHead>Payment</TableHead><TableHead className="amount-column">Total</TableHead><TableHead /></TableRow></TableHeader><TableBody>{orders.map((order) => <TableRow key={order.id}><TableCell>{dateText(order.orderDate)}<small>{order.orderNumber}</small></TableCell><TableCell><strong>{order.customerName || "Walk-in customer"}</strong><small>{order.salesChannel} · {order.source}</small></TableCell><TableCell>{order.itemsSummary || "—"}</TableCell><TableCell><Status value={order.orderStatus} /></TableCell><TableCell><Status value={order.paymentStatus} /><small>{order.paymentMethod}</small></TableCell><TableCell className="amount-column"><strong>{money(order.totalCents)}</strong><small>{money(order.amountPaidCents)} paid</small></TableCell><TableCell><div className="row-actions">{order.source !== "Enstack" && <Button variant="ghost" size="icon" onClick={() => edit(order)} aria-label={`Edit ${order.orderNumber}`}><Pencil size={15} /></Button>}<Button variant="ghost" size="icon" onClick={() => remove(order)} aria-label={`Delete ${order.orderNumber}`}><Trash2 size={15} /></Button></div></TableCell></TableRow>)}</TableBody></Table> : <Empty text="No sales match the current filters." icon={<ShoppingCart />} />}
-    </section></div>;
+  const [noteOrder, setNoteOrder] = useState<Sale | null>(null);
+
+  const notePreview = (note: string) => {
+    const clean = note.trim().replace(/\s+/g, " ");
+    if (!clean) return "—";
+    return clean.length > 54 ? `${clean.slice(0, 54)}…` : clean;
+  };
+
+  return (
+    <div className="finance-stack">
+      <MetricGrid
+        items={[
+          {
+            icon: <ShoppingCart />,
+            label: "Completed sales",
+            value: money(summary.grossSales),
+            note: `${orders.filter((order) => order.orderStatus === "Completed").length} completed orders`,
+            accent: true,
+          },
+          {
+            icon: <Wallet />,
+            label: "Cash collected",
+            value: money(summary.paid),
+            note: "Paid and partial collections",
+          },
+          {
+            icon: <AlertTriangle />,
+            label: "Receivables",
+            value: money(summary.receivables),
+            note: "Customer balances",
+            warning: summary.receivables > 0,
+          },
+          {
+            icon: <TrendingUp />,
+            label: "Net sales",
+            value: money(summary.netSales),
+            note: "After transaction fees",
+          },
+        ]}
+      />
+
+      <section className="panel finance-table">
+        <div className="finance-toolbar">
+          <div>
+            <p className="eyebrow">SALES & ORDERS</p>
+            <h2>{orders.length} records</h2>
+          </div>
+
+          <div className="finance-actions">
+            <Button variant="outline" onClick={importCsv}>
+              <Upload size={16} /> Import Enstack CSV
+            </Button>
+            <Button className="primary-button" onClick={add}>
+              <Plus size={17} /> Add sale
+            </Button>
+          </div>
+        </div>
+
+        <div className="finance-filters">
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search order, customer, product, or note"
+          />
+          <Choice
+            value={status}
+            onChange={setStatus}
+            options={["All statuses", ...orderStatuses]}
+          />
+        </div>
+
+        {orders.length ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date / Order</TableHead>
+                <TableHead>Customer / Channel</TableHead>
+                <TableHead>Items</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Notes</TableHead>
+                <TableHead>Payment</TableHead>
+                <TableHead className="amount-column">Total</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+
+            <TableBody>
+              {orders.map((order) => {
+                const note = order.notes?.trim() ?? "";
+                const hasLongNote = note.length > 54 || note.includes("\n");
+
+                return (
+                  <TableRow key={order.id}>
+                    <TableCell>
+                      {dateText(order.orderDate)}
+                      <small>{order.orderNumber}</small>
+                    </TableCell>
+
+                    <TableCell>
+                      <strong>{order.customerName || "Walk-in customer"}</strong>
+                      <small>{order.salesChannel} · {order.source}</small>
+                    </TableCell>
+
+                    <TableCell>{order.itemsSummary || "—"}</TableCell>
+
+                    <TableCell>
+                      <Status value={order.orderStatus} />
+                    </TableCell>
+
+                    <TableCell>
+                      {note ? (
+                        <div
+                          style={{
+                            display: "grid",
+                            gap: 5,
+                            minWidth: 150,
+                            maxWidth: 240,
+                          }}
+                        >
+                          <span
+                            title={note}
+                            style={{
+                              display: "block",
+                              overflow: "hidden",
+                              color: "#aeb4ac",
+                              fontSize: 12,
+                              lineHeight: 1.45,
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {notePreview(note)}
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() => setNoteOrder(order)}
+                            style={{
+                              width: "fit-content",
+                              border: 0,
+                              background: "transparent",
+                              padding: 0,
+                              color: "#c7ff3f",
+                              font: "inherit",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {hasLongNote ? "View full note" : "View note"}
+                          </button>
+                        </div>
+                      ) : (
+                        <span style={{ color: "#5f665e" }}>—</span>
+                      )}
+                    </TableCell>
+
+                    <TableCell>
+                      <Status value={order.paymentStatus} />
+                      <small>{order.paymentMethod}</small>
+                    </TableCell>
+
+                    <TableCell className="amount-column">
+                      <strong>{money(order.totalCents)}</strong>
+                      <small>{money(order.amountPaidCents)} paid</small>
+                    </TableCell>
+
+                    <TableCell>
+                      <div className="row-actions">
+                        {order.source !== "Enstack" && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => edit(order)}
+                            aria-label={`Edit ${order.orderNumber}`}
+                          >
+                            <Pencil size={15} />
+                          </Button>
+                        )}
+
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => remove(order)}
+                          aria-label={`Delete ${order.orderNumber}`}
+                        >
+                          <Trash2 size={15} />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        ) : (
+          <Empty
+            text="No sales match the current filters."
+            icon={<ShoppingCart />}
+          />
+        )}
+      </section>
+
+      <Dialog
+        open={Boolean(noteOrder)}
+        onOpenChange={(open) => {
+          if (!open) setNoteOrder(null);
+        }}
+      >
+        <DialogContent className="budget-dialog">
+          <DialogHeader>
+            <p className="eyebrow">ORDER NOTE</p>
+            <DialogTitle>{noteOrder?.orderNumber ?? "Order note"}</DialogTitle>
+            <DialogDescription>
+              Full note attached to this sales order.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div
+            style={{
+              maxHeight: "55vh",
+              overflowY: "auto",
+              border: "1px solid #303530",
+              borderRadius: 12,
+              background: "#0f110f",
+              padding: 16,
+              color: "#e8eae4",
+              fontSize: 13,
+              lineHeight: 1.65,
+              whiteSpace: "pre-wrap",
+              overflowWrap: "anywhere",
+            }}
+          >
+            {noteOrder?.notes?.trim() || "No note was added to this order."}
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              className="primary-button"
+              onClick={() => setNoteOrder(null)}
+            >
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
 }
 
-function ProductsView({ products, movements, add, edit, adjust, remove }: { products: Product[]; movements: Movement[]; add: () => void; edit: (product: Product) => void; adjust: (product: Product) => void; remove: (product: Product) => void }) {
-  const low = products.filter((product) => product.stockQuantity <= product.lowStockThreshold);
-  const value = products.reduce((sum, product) => sum + product.costCents * product.stockQuantity, 0);
-  return <div className="finance-stack"><MetricGrid items={[{ icon: <Package />, label: "Products", value: String(products.length), note: "Active catalog", accent: true }, { icon: <Boxes />, label: "Units in stock", value: String(products.reduce((sum, product) => sum + product.stockQuantity, 0)), note: "Available inventory" }, { icon: <Wallet />, label: "Inventory value", value: money(value), note: "Based on product cost" }, { icon: <AlertTriangle />, label: "Low stock", value: String(low.length), note: "At or below threshold", warning: low.length > 0 }]} />
-    <section className="panel finance-table"><div className="finance-toolbar"><div><p className="eyebrow">PRODUCT CATALOG</p><h2>Products & inventory</h2></div><Button className="primary-button" onClick={add}><Plus size={17} /> Add product</Button></div>{products.length ? <Table><TableHeader><TableRow><TableHead>Product</TableHead><TableHead>SKU / Variant</TableHead><TableHead>Cost</TableHead><TableHead>Price</TableHead><TableHead>Stock</TableHead><TableHead /></TableRow></TableHeader><TableBody>{products.map((product) => <TableRow key={product.id}><TableCell><strong>{product.name}</strong></TableCell><TableCell>{product.sku}<small>{product.variant || "Standard"}</small></TableCell><TableCell>{money(product.costCents)}</TableCell><TableCell>{money(product.sellingPriceCents)}</TableCell><TableCell><span className={product.stockQuantity <= product.lowStockThreshold ? "stock-low" : "stock-good"}>{product.stockQuantity}</span><small>Low at {product.lowStockThreshold}</small></TableCell><TableCell><div className="row-actions"><Button variant="ghost" size="icon" onClick={() => adjust(product)} aria-label="Adjust stock"><Boxes size={15} /></Button><Button variant="ghost" size="icon" onClick={() => edit(product)}><Pencil size={15} /></Button><Button variant="ghost" size="icon" onClick={() => remove(product)}><Trash2 size={15} /></Button></div></TableCell></TableRow>)}</TableBody></Table> : <Empty text="Add products before recording manual sales." icon={<Package />} action={add} />}</section>
-    <section className="panel finance-table"><div className="finance-toolbar"><div><p className="eyebrow">STOCK HISTORY</p><h2>Recent movements</h2></div></div>{movements.length ? <Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Product</TableHead><TableHead>Type</TableHead><TableHead>Reason</TableHead><TableHead className="amount-column">Change</TableHead></TableRow></TableHeader><TableBody>{movements.slice(0, 15).map((movement) => <TableRow key={movement.id}><TableCell>{new Date(movement.createdAt).toLocaleDateString("en-PH")}</TableCell><TableCell><strong>{movement.productName}</strong><small>{movement.sku}</small></TableCell><TableCell>{movement.movementType}</TableCell><TableCell>{movement.reason || "—"}</TableCell><TableCell className="amount-column"><strong className={movement.quantityDelta > 0 ? "positive" : "negative"}>{movement.quantityDelta > 0 ? "+" : ""}{movement.quantityDelta}</strong></TableCell></TableRow>)}</TableBody></Table> : <Empty text="Stock movements will appear here." icon={<Boxes />} />}</section></div>;
+const INVENTORY_SIZE_TOKENS = [
+  "XXS",
+  "XS",
+  "S",
+  "M",
+  "L",
+  "XL",
+  "XXL",
+  "2XL",
+  "3XL",
+  "4XL",
+  "5XL",
+] as const;
+
+function inventoryProductIdentity(product: Product) {
+  const rawName = product.name
+    .replace(/\u00A0/g, " ")
+    .replace(/[\u2007\u202F]/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+
+  const rawVariant = (product.variant || "")
+    .replace(/\u00A0/g, " ")
+    .trim();
+
+  // If the database already has a real size/variant, use it.
+  if (rawVariant && rawVariant.toLowerCase() !== "standard") {
+    return {
+      baseName: rawName,
+      variant: rawVariant.toUpperCase(),
+    };
+  }
+
+  // Support Enstack-style product names:
+  // "APEX Oversized - M"
+  // "OBSIDIAN VOID - XXS"
+  const sizePattern = INVENTORY_SIZE_TOKENS.join("|");
+
+  const match = rawName.match(
+    new RegExp(
+      `^(.*?)(?:\\s*[-–—]\\s*|\\s+)(${sizePattern})\\s*$`,
+      "i",
+    ),
+  );
+
+  if (match?.[1] && match?.[2]) {
+    return {
+      baseName: match[1].trim(),
+      variant: match[2].toUpperCase(),
+    };
+  }
+
+  return {
+    baseName: rawName,
+    variant: rawVariant || "Standard",
+  };
+}
+
+function ProductsView({ products, movements, add, importInventory, adjustStock, remove }: { products: Product[]; movements: Movement[]; add: () => void; importInventory: () => void; adjustStock: (product: Product, quantityDelta: number) => Promise<void>; remove: (product: Product) => void }) {
+  const [stockFilter, setStockFilter] = useState("All stock");
+  const [productSearch, setProductSearch] = useState("");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const sizeOrder = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "2XL", "3XL", "4XL", "5XL"];
+
+  const groups = useMemo(() => {
+    const map = new Map<string, { key: string; name: string; variants: Product[] }>();
+
+    for (const product of products) {
+      const identity = inventoryProductIdentity(product);
+      const groupKey = identity.baseName.toLowerCase();
+      const group = map.get(groupKey) ?? { key: groupKey, name: identity.baseName, variants: [] };
+      group.variants.push(product);
+      map.set(groupKey, group);
+    }
+
+    return Array.from(map.values())
+      .map((group) => {
+        group.variants.sort((a, b) => {
+          const aVariant = inventoryProductIdentity(a).variant.toUpperCase();
+          const bVariant = inventoryProductIdentity(b).variant.toUpperCase();
+          const aIndex = sizeOrder.indexOf(aVariant);
+          const bIndex = sizeOrder.indexOf(bVariant);
+
+          if (aIndex >= 0 || bIndex >= 0) {
+            if (aIndex < 0) return 1;
+            if (bIndex < 0) return -1;
+            return aIndex - bIndex;
+          }
+
+          return aVariant.localeCompare(bVariant);
+        });
+
+        const totalStock = group.variants.reduce((sum, product) => sum + product.stockQuantity, 0);
+        const lowStockVariants = group.variants.filter(
+          (product) => product.stockQuantity > 0 && product.stockQuantity <= product.lowStockThreshold,
+        ).length;
+        const prices = group.variants.map((product) => product.sellingPriceCents);
+        const minPrice = prices.length ? Math.min(...prices) : 0;
+        const maxPrice = prices.length ? Math.max(...prices) : 0;
+
+        return {
+          ...group,
+          totalStock,
+          lowStockVariants,
+          minPrice,
+          maxPrice,
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [products]);
+
+  const filteredGroups = useMemo(() => {
+    const query = productSearch.trim().toLowerCase();
+
+    return groups.filter((group) => {
+      const matchesSearch =
+        !query ||
+        group.name.toLowerCase().includes(query) ||
+        group.variants.some((product) => {
+          const identity = inventoryProductIdentity(product);
+          return [identity.baseName, identity.variant, product.sku].some((value) =>
+            value?.toLowerCase().includes(query),
+          );
+        });
+
+      const matchesStock =
+        stockFilter === "All stock" ||
+        (stockFilter === "In stock" && group.totalStock > 0) ||
+        (stockFilter === "Out of stock" && group.totalStock === 0) ||
+        (stockFilter === "Low stock" && group.lowStockVariants > 0);
+
+      return matchesSearch && matchesStock;
+    });
+  }, [groups, productSearch, stockFilter]);
+
+  const totalUnits = products.reduce((sum, product) => sum + product.stockQuantity, 0);
+  const outOfStockGroups = groups.filter((group) => group.totalStock === 0).length;
+  const lowVariants = products.filter(
+    (product) => product.stockQuantity > 0 && product.stockQuantity <= product.lowStockThreshold,
+  ).length;
+
+  const toggleGroup = (key: string) => {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const priceLabel = (group: (typeof groups)[number]) =>
+    group.minPrice === group.maxPrice
+      ? money(group.minPrice)
+      : `${money(group.minPrice)} – ${money(group.maxPrice)}`;
+
+  return (
+    <div className="finance-stack">
+      <MetricGrid
+        items={[
+          { icon: <Package />, label: "Products", value: String(groups.length), note: `${products.length} size / variant records`, accent: true },
+          { icon: <Boxes />, label: "Units in stock", value: String(totalUnits), note: "Across all sizes" },
+          { icon: <AlertTriangle />, label: "Out of stock", value: String(outOfStockGroups), note: "Product styles with zero stock", warning: outOfStockGroups > 0 },
+          { icon: <Wallet />, label: "Low stock sizes", value: String(lowVariants), note: "Sizes at or below threshold", warning: lowVariants > 0 },
+        ]}
+      />
+
+      <section className="panel finance-table">
+        <div className="finance-toolbar">
+          <div>
+            <p className="eyebrow">PRODUCT CATALOG</p>
+            <h2>Products & inventory</h2>
+          </div>
+
+          <div className="finance-actions">
+            <Button variant="outline" onClick={importInventory}>
+              <Upload size={16} /> Import inventory
+            </Button>
+            <Button className="primary-button" onClick={add}>
+              <Plus size={17} /> Add product
+            </Button>
+          </div>
+        </div>
+
+        <div className="finance-filters">
+          <Input
+            value={productSearch}
+            onChange={(event) => setProductSearch(event.target.value)}
+            placeholder="Search product, size, or SKU"
+          />
+          <Choice
+            value={stockFilter}
+            onChange={setStockFilter}
+            options={["All stock", "In stock", "Out of stock", "Low stock"]}
+          />
+        </div>
+
+        {filteredGroups.length ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Product</TableHead>
+                <TableHead>Sizes / Variants</TableHead>
+                <TableHead>Price</TableHead>
+                <TableHead>Stock</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+
+            <TableBody>
+              {filteredGroups.flatMap((group) => {
+                const isOpen = expanded.has(group.key);
+                const sizeText = group.variants
+                  .map((product) => inventoryProductIdentity(product).variant)
+                  .join(" · ");
+
+                const rows: ReactNode[] = [
+                  <TableRow key={`group-${group.key}`}>
+                    <TableCell>
+                      <button
+                        type="button"
+                        onClick={() => toggleGroup(group.key)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 9,
+                          width: "100%",
+                          border: 0,
+                          background: "transparent",
+                          padding: 0,
+                          color: "inherit",
+                          textAlign: "left",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                        <span>
+                          <strong>{group.name}</strong>
+                          <small>{group.variants.length} {group.variants.length === 1 ? "size / variant" : "sizes / variants"}</small>
+                        </span>
+                      </button>
+                    </TableCell>
+
+                    <TableCell>{sizeText || "Standard"}</TableCell>
+                    <TableCell>{priceLabel(group)}</TableCell>
+
+                    <TableCell>
+                      <span className={group.totalStock === 0 ? "stock-low" : "stock-good"}>
+                        {group.totalStock}
+                      </span>
+                      <small>Total units</small>
+                    </TableCell>
+
+                    <TableCell>
+                      {group.totalStock === 0 ? (
+                        <span className="status-tag unpaid">Out of stock</span>
+                      ) : group.lowStockVariants > 0 ? (
+                        <span className="status-tag partial">Low stock</span>
+                      ) : (
+                        <span className="status-tag paid">In stock</span>
+                      )}
+                    </TableCell>
+
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => toggleGroup(group.key)}
+                        aria-label={isOpen ? `Hide ${group.name} sizes` : `Show ${group.name} sizes`}
+                      >
+                        {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      </Button>
+                    </TableCell>
+                  </TableRow>,
+                ];
+
+                if (isOpen) {
+                  for (const product of group.variants) {
+                    const variantName = inventoryProductIdentity(product).variant;
+
+                    rows.push(
+                      <TableRow key={product.id}>
+                        <TableCell>
+                          <div style={{ paddingLeft: 28 }}>
+                            <strong>{variantName}</strong>
+                            <small>{product.sku}</small>
+                          </div>
+                        </TableCell>
+
+                        <TableCell>{variantName}</TableCell>
+
+                        <TableCell>
+                          <strong>{money(product.sellingPriceCents)}</strong>
+                          <small>{product.costCents ? `${money(product.costCents)} cost` : "No cost set"}</small>
+                        </TableCell>
+
+                        <TableCell>
+                          <div
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 8,
+                              padding: "4px",
+                              border: "1px solid #303530",
+                              borderRadius: 10,
+                              background: "#101310",
+                            }}
+                          >
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              disabled={product.stockQuantity <= 0}
+                              onClick={() => void adjustStock(product, -1)}
+                              aria-label={`Decrease ${group.name} ${variantName} stock`}
+                              style={{ width: 30, height: 30 }}
+                            >
+                              <span style={{ fontSize: 20, lineHeight: 1 }}>−</span>
+                            </Button>
+
+                            <strong
+                              style={{
+                                minWidth: 28,
+                                textAlign: "center",
+                                fontVariantNumeric: "tabular-nums",
+                              }}
+                            >
+                              {product.stockQuantity}
+                            </strong>
+
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => void adjustStock(product, 1)}
+                              aria-label={`Increase ${group.name} ${variantName} stock`}
+                              style={{ width: 30, height: 30 }}
+                            >
+                              <Plus size={16} />
+                            </Button>
+                          </div>
+                        </TableCell>
+
+                        <TableCell>
+                          {product.stockQuantity === 0 ? (
+                            <span className="status-tag unpaid">Out of stock</span>
+                          ) : product.stockQuantity <= product.lowStockThreshold ? (
+                            <span className="status-tag partial">Low stock</span>
+                          ) : (
+                            <span className="status-tag paid">In stock</span>
+                          )}
+                        </TableCell>
+
+                        <TableCell>
+                          <div className="row-actions">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => remove(product)}
+                              aria-label={`Delete ${group.name} ${variantName}`}
+                              title={`Delete ${group.name} ${variantName}`}
+                            >
+                              <Trash2 size={15} />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>,
+                    );
+                  }
+                }
+
+                return rows;
+              })}
+            </TableBody>
+          </Table>
+        ) : (
+          <Empty
+            text={products.length ? "No products match the selected stock filter." : "Add products before recording manual sales."}
+            icon={<Package />}
+            action={products.length ? undefined : add}
+          />
+        )}
+      </section>
+
+      <section className="panel finance-table">
+        <div className="finance-toolbar">
+          <div>
+            <p className="eyebrow">STOCK HISTORY</p>
+            <h2>Recent movements</h2>
+          </div>
+        </div>
+
+        {movements.length ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>Product</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Reason</TableHead>
+                <TableHead className="amount-column">Change</TableHead>
+              </TableRow>
+            </TableHeader>
+
+            <TableBody>
+              {movements.slice(0, 15).map((movement) => (
+                <TableRow key={movement.id}>
+                  <TableCell>{new Date(movement.createdAt).toLocaleDateString("en-PH")}</TableCell>
+                  <TableCell>
+                    <strong>{movement.productName}</strong>
+                    <small>{movement.sku}</small>
+                  </TableCell>
+                  <TableCell>{movement.movementType}</TableCell>
+                  <TableCell>{movement.reason || "—"}</TableCell>
+                  <TableCell className="amount-column">
+                    <strong className={movement.quantityDelta > 0 ? "positive" : "negative"}>
+                      {movement.quantityDelta > 0 ? "+" : ""}
+                      {movement.quantityDelta}
+                    </strong>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : (
+          <Empty text="Stock movements will appear here." icon={<Boxes />} />
+        )}
+      </section>
+    </div>
+  );
 }
 
 function ProfitView({ summary, orders }: { summary: FinanceSummary; orders: Sale[] }) {
@@ -255,7 +980,7 @@ function CashFlowView({ summary, orders, expenses }: { summary: FinanceSummary; 
 }
 
 function ReportsView({ summary, orders, products, productSales, expenseCategories, from, to, setFrom, setTo, refresh, refreshing }: { summary: FinanceSummary; orders: Sale[]; products: Product[]; productSales: { name: string; quantity: number; sales: number }[]; expenseCategories: [string, number][]; from: string; to: string; setFrom: (value: string) => void; setTo: (value: string) => void; refresh: () => void; refreshing: boolean }) {
-  const exportSales = () => downloadCsv("peakathlete-sales.csv", [["Order Date", "Order ID", "Source", "Customer", "Channel", "Items", "Status", "Payment Status", "Payment Method", "Subtotal", "Discount", "Shipping", "Transaction Fee", "Total", "Net Sales", "Amount Paid"], ...orders.map((order) => [order.orderDate, order.orderNumber, order.source, order.customerName, order.salesChannel, order.itemsSummary, order.orderStatus, order.paymentStatus, order.paymentMethod, order.subtotalCents / 100, order.discountCents / 100, order.shippingFeeCents / 100, order.transactionFeeCents / 100, order.totalCents / 100, order.netSalesCents / 100, order.amountPaidCents / 100])]);
+  const exportSales = () => downloadCsv("peakathlete-sales.csv", [["Order Date", "Order ID", "Source", "Customer", "Channel", "Items", "Status", "Notes", "Payment Status", "Payment Method", "Subtotal", "Discount", "Shipping", "Transaction Fee", "Total", "Net Sales", "Amount Paid"], ...orders.map((order) => [order.orderDate, order.orderNumber, order.source, order.customerName, order.salesChannel, order.itemsSummary, order.orderStatus, order.notes, order.paymentStatus, order.paymentMethod, order.subtotalCents / 100, order.discountCents / 100, order.shippingFeeCents / 100, order.transactionFeeCents / 100, order.totalCents / 100, order.netSalesCents / 100, order.amountPaidCents / 100])]);
   const exportProducts = () => downloadCsv("peakathlete-products.csv", [["Product", "SKU", "Variant", "Cost", "Selling Price", "Stock", "Low Stock Threshold"], ...products.map((product) => [product.name, product.sku, product.variant, product.costCents / 100, product.sellingPriceCents / 100, product.stockQuantity, product.lowStockThreshold])]);
   const exportProfit = () => downloadCsv("peakathlete-profit-summary.csv", [["From", "To", "Net Sales", "COGS", "Gross Profit", "Expenses", "Net Profit", "Cash In", "Cash Out", "Receivables"], [from, to, summary.netSales / 100, summary.cogs / 100, summary.grossProfit / 100, summary.expenses / 100, summary.netProfit / 100, summary.paid / 100, summary.expensePaid / 100, summary.receivables / 100]]);
 
@@ -347,12 +1072,65 @@ function ProductDialog({ open, setOpen, draft, setDraft, editing, saving, submit
   return <Dialog open={open} onOpenChange={setOpen}><DialogContent className="budget-dialog product-dialog"><form onSubmit={submit}><DialogHeader><p className="eyebrow">{editing ? "EDIT PRODUCT" : "NEW PRODUCT"}</p><DialogTitle>{editing ? "Update product" : "Add product"}</DialogTitle><DialogDescription>Set the selling price, cost, and inventory threshold.</DialogDescription></DialogHeader><div className="form-grid"><Field label="Product name" full><Text value={draft.name} onChange={update("name")} required /></Field><Field label="SKU"><Text value={draft.sku} onChange={update("sku")} required /></Field><Field label="Variant"><Text value={draft.variant} onChange={update("variant")} placeholder="Size, color, or style" /></Field><Field label="Unit cost"><Money value={draft.cost} onChange={update("cost")} required /></Field><Field label="Selling price"><Money value={draft.sellingPrice} onChange={update("sellingPrice")} required /></Field>{!editing && <Field label="Starting stock"><Text value={draft.stockQuantity} onChange={update("stockQuantity")} type="number" min="0" step="1" required /></Field>}<Field label="Low-stock warning"><Text value={draft.lowStockThreshold} onChange={update("lowStockThreshold")} type="number" min="0" step="1" required /></Field></div><DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" className="primary-button" disabled={saving}>Save product</Button></DialogFooter></form></DialogContent></Dialog>;
 }
 
-function StockDialog({ open, setOpen, product, delta, setDelta, reason, setReason, saving, submit }: { open: boolean; setOpen: (open: boolean) => void; product: Product | null; delta: string; setDelta: (value: string) => void; reason: string; setReason: (value: string) => void; saving: boolean; submit: (event: FormEvent) => void }) {
-  return <Dialog open={open} onOpenChange={setOpen}><DialogContent className="budget-dialog"><form onSubmit={submit}><DialogHeader><p className="eyebrow">INVENTORY ADJUSTMENT</p><DialogTitle>{product?.name}</DialogTitle><DialogDescription>Current stock: {product?.stockQuantity ?? 0}. Use a negative number for stock out.</DialogDescription></DialogHeader><Field label="Quantity change"><Text value={delta} onChange={setDelta} type="number" step="1" placeholder="e.g. 20 or -3" required /></Field><Field label="Reason"><Text value={reason} onChange={setReason} placeholder="Restock, damaged, sample, correction…" required /></Field><DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" className="primary-button" disabled={saving}>Adjust stock</Button></DialogFooter></form></DialogContent></Dialog>;
-}
-
 function ImportDialog({ open, setOpen, file, setFile, saving, submit }: { open: boolean; setOpen: (open: boolean) => void; file: File | null; setFile: (file: File | null) => void; saving: boolean; submit: (event: FormEvent) => void }) {
   return <Dialog open={open} onOpenChange={setOpen}><DialogContent className="budget-dialog"><form onSubmit={submit}><DialogHeader><p className="eyebrow">ENSTACK IMPORT</p><DialogTitle>Import Sales Report</DialogTitle><DialogDescription>Download the CSV Sales Report from Enstack, then upload it here. Existing Enstack Order IDs will be updated instead of duplicated.</DialogDescription></DialogHeader><Input type="file" accept=".csv,text/csv" onChange={(event) => setFile(event.target.files?.[0] ?? null)} required /><small className="dialog-note">Enstack format required: Created At, Order ID, Status, Orders, Shipping Method, Mode of Payment, Sub-total, Shipping Fee, Enstack Subsidy, Voucher Discount, Cashier Discount, Transaction Fee, Total Order Amount, Enstack Shipping Fee, Enstack Transaction Fee, Enstack Commission, Total Sales, Order notes, Date Paid, Pickup Date, Date Delivered. Maximum 10 MB.</small><DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" className="primary-button" disabled={saving || !file}>{saving && <Loader2 className="spin" size={16} />}Import sales</Button></DialogFooter></form></DialogContent></Dialog>;
+}
+
+function InventoryImportDialog({ open, setOpen, file, setFile, saving, submit }: { open: boolean; setOpen: (open: boolean) => void; file: File | null; setFile: (file: File | null) => void; saving: boolean; submit: (event: FormEvent) => void }) {
+  const downloadTemplate = () =>
+    downloadCsv("peakathlete-inventory-template.csv", [
+      ["Product Name", "Price", "Quantity"],
+      ["OBSIDIAN VOID - XS", 1759, 0],
+      ["OBSIDIAN VOID - S", 1759, 0],
+      ["OBSIDIAN VOID - XXS", 1759, 4],
+      ["OBSIDIAN VOID - M", 1759, 0],
+      ["OBSIDIAN VOID - L", 1759, 0],
+      ["APEX Oversized - M", 998.82, 2],
+      ["APEX Oversized - L", 998.82, 1],
+      ["APEX Oversized - XL", 998.82, 5],
+      ["APEX Oversized - S", 998.82, 0],
+    ]);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent className="budget-dialog">
+        <form onSubmit={submit}>
+          <DialogHeader>
+            <p className="eyebrow">INVENTORY IMPORT</p>
+            <DialogTitle>Import Enstack inventory</DialogTitle>
+            <DialogDescription>
+              Upload the Enstack inventory file using Product Name, Price, and Quantity. Sizes such as S, M, L, XL, XS, and XXS are detected automatically from the end of the product name.
+            </DialogDescription>
+          </DialogHeader>
+
+          <Input
+            type="file"
+            accept=".csv,.tsv,text/csv,text/tab-separated-values"
+            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+            required
+          />
+
+          <small className="dialog-note">
+            Exact format: Product Name, Price, Quantity. Example: "APEX Oversized - M". The importer stores it under APEX Oversized → M. Quantity replaces the current stock for that exact size.
+          </small>
+
+          <Button type="button" variant="outline" onClick={downloadTemplate}>
+            <Download size={16} /> Download Enstack template
+          </Button>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" className="primary-button" disabled={saving || !file}>
+              {saving && <Loader2 className="spin" size={16} />}
+              Import inventory
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function MetricGrid({ items }: { items: { icon: ReactNode; label: string; value: string; note: string; accent?: boolean; warning?: boolean }[] }) { return <section className="metrics-grid">{items.map((item) => <article className={`metric-card ${item.accent ? "accent" : ""}`} key={item.label}><div className="metric-icon">{item.icon}</div><p>{item.label}</p><strong className={item.warning ? "warning" : ""}>{item.value}</strong><span>{item.note}</span></article>)}</section>; }
