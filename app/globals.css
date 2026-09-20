@@ -1877,3 +1877,30 @@ table { border-top: 1px solid #262a26; } thead { background: #101210; } th { hei
     flex-basis: 34px !important;
   }
 }
+
+
+/* =========================================================
+   ADD EXPENSE: CATEGORY LOCK + PAYMENT STATUS COLORS
+   ========================================================= */
+.payment-status-select.unpaid {
+  border-color: rgba(255, 98, 105, 0.42) !important;
+  background: rgba(255, 98, 105, 0.10) !important;
+  color: #ff858b !important;
+}
+
+.payment-status-select.partial {
+  border-color: rgba(255, 207, 102, 0.42) !important;
+  background: rgba(255, 207, 102, 0.10) !important;
+  color: #ffd779 !important;
+}
+
+.payment-status-select.paid {
+  border-color: rgba(199, 255, 63, 0.36) !important;
+  background: rgba(199, 255, 63, 0.10) !important;
+  color: #cfff70 !important;
+}
+
+.editable-choice input:disabled {
+  cursor: not-allowed !important;
+  opacity: 0.58 !important;
+}

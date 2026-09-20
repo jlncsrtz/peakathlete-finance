@@ -194,6 +194,8 @@ const paymentMethods = [
   "Cash",
   "GCash",
   "Maya",
+  "GoTyme",
+  "MariBank",
   "Bank Transfer",
   "Credit Card",
   "Debit Card",
@@ -344,13 +346,9 @@ function initialDraft(): Draft {
 
     vendor: "",
 
-    expenseType:
-      "Operating Expense",
+    expenseType: "",
 
-    category:
-      categories[
-        "Operating Expense"
-      ][0],
+    category: "",
 
     subcategory: "",
 
@@ -3073,7 +3071,14 @@ function ExpenseDialog({
                 options={
                   categoryOptions
                 }
-                placeholder="Choose or type a new category"
+                placeholder={
+                  draft.expenseType.trim()
+                    ? "Choose or type a new category"
+                    : "Enter expense type first"
+                }
+                disabled={
+                  !draft.expenseType.trim()
+                }
                 required
               />
             </Field>
@@ -3189,6 +3194,7 @@ function ExpenseDialog({
                 options={
                   paymentStatuses
                 }
+                className={`form-select payment-status-select ${draft.paymentStatus.toLowerCase()}`}
               />
             </Field>
 
@@ -3475,6 +3481,7 @@ function EditableChoice({
   options,
   placeholder,
   required,
+  disabled,
 }: {
   value: string;
 
@@ -3487,6 +3494,8 @@ function EditableChoice({
   placeholder: string;
 
   required?: boolean;
+
+  disabled?: boolean;
 }) {
   const listId =
     useId();
@@ -3505,6 +3514,9 @@ function EditableChoice({
         autoComplete="off"
         required={
           required
+        }
+        disabled={
+          disabled
         }
       />
 
@@ -3526,9 +3538,9 @@ function EditableChoice({
       </datalist>
 
       <small>
-        Select an
-        option or type
-        your own.
+        {disabled
+          ? "Enter expense type first."
+          : "Select an option or type your own."}
       </small>
     </div>
   );
