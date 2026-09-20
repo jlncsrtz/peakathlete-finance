@@ -1,0 +1,25 @@
+PEAKATHLETE LOGIN SETUP
+
+1. Replace/add the files from this ZIP using the same folders.
+
+2. In .env.local add:
+   NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+
+   Keep your existing server variables too:
+   SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+   SUPABASE_SECRET_KEY=sb_secret_...
+   SUPABASE_RECEIPTS_BUCKET=receipts
+
+3. In Supabase Dashboard:
+   Authentication -> Users -> Add user
+   Create the email/password account you want to use.
+
+4. Restart the app:
+   rm -rf .next
+   npm run dev
+
+5. Open http://localhost:3000
+   If you are not signed in, the app redirects to /login.
+
+Public sign-up is not included.
