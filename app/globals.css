@@ -1011,13 +1011,6 @@ table { border-top: 1px solid #262a26; } thead { background: #101210; } th { hei
   padding: 28px 18px;
 }
 
-.login-logo {
-  width: 190px;
-  height: auto;
-  display: block;
-  object-fit: contain;
-}
-
 .login-card {
   width: min(100%, 430px);
   border: 1px solid #292d29;
@@ -1205,14 +1198,25 @@ table { border-top: 1px solid #262a26; } thead { background: #101210; } th { hei
   display: flex;
   align-items: center;
   gap: 12px;
+  width: 100%;
 }
 
 .brand-emblem-image {
-  width: 42px;
-  height: 42px;
+  width: 42px !important;
+  height: 42px !important;
+  min-width: 42px !important;
+  max-width: 42px !important;
+  min-height: 42px !important;
+  max-height: 42px !important;
+
   object-fit: contain;
   display: block;
-  flex-shrink: 0;
+  flex: 0 0 42px;
+}
+
+.brand-sidebar-header {
+  min-height: auto !important;
+  padding: 20px 16px !important;
 }
 
 .brand-name i {
