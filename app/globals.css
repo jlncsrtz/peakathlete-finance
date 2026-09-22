@@ -1904,3 +1904,793 @@ table { border-top: 1px solid #262a26; } thead { background: #101210; } th { hei
   cursor: not-allowed !important;
   opacity: 0.58 !important;
 }
+
+
+/* =========================================================
+   ATHLETE RECEIPTS
+   ========================================================= */
+.athlete-receipts-page {
+  display: grid;
+  gap: 16px;
+}
+
+.athlete-receipts-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.athlete-receipts-search {
+  position: relative;
+  width: min(420px, 100%);
+}
+
+.athlete-receipts-search > svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  z-index: 2;
+  transform: translateY(-50%);
+  opacity: 0.62;
+  pointer-events: none;
+}
+
+.athlete-receipts-search input {
+  padding-left: 38px;
+}
+
+.athlete-receipts-card {
+  overflow: hidden;
+  border: 1px solid #2b302b;
+  border-radius: 16px;
+  background: #151815;
+}
+
+.athlete-receipts-empty {
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 30px;
+  text-align: center;
+  color: #a9aea7;
+}
+
+.athlete-receipts-empty strong {
+  color: #f0f2ed;
+}
+
+.athlete-code-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid #323832;
+  border-radius: 8px;
+  background: #101310;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.athlete-receipt-actions-head {
+  width: 54px;
+}
+
+.athlete-receipt-dialog {
+  width: min(560px, calc(100vw - 24px));
+}
+
+.athlete-receipt-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin: 20px 0;
+}
+
+.athlete-receipt-form .field {
+  width: 100%;
+  min-width: 0;
+}
+
+.athlete-receipt-form input {
+  width: 100%;
+}
+
+.athlete-receipt-preview {
+  width: min(720px, calc(100vw - 24px));
+}
+
+.athlete-receipt-image {
+  display: block;
+  width: 100%;
+  max-height: 68vh;
+  object-fit: contain;
+  border: 1px solid #2d322d;
+  border-radius: 12px;
+  background: #0e100e;
+}
+
+@media (max-width: 640px) {
+  .athlete-receipts-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
+  .athlete-receipts-search {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .athlete-receipt-add {
+    width: 40px !important;
+    min-width: 40px !important;
+    height: 40px !important;
+    padding: 0 !important;
+    font-size: 0 !important;
+  }
+
+  .athlete-receipt-add svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .athlete-receipts-card {
+    overflow-x: auto;
+  }
+
+  .athlete-receipts-card table {
+    min-width: 650px;
+  }
+
+  .athlete-receipt-form {
+    grid-template-columns: 1fr;
+  }
+
+  .athlete-receipt-form input,
+  .athlete-receipt-form button {
+    font-size: 16px !important;
+  }
+}
+
+
+/* =========================================================
+   PRODUCT COSTS
+   ========================================================= */
+.product-costs-page {
+  display: grid;
+  gap: 18px;
+}
+
+.product-costs-intro {
+  max-width: 620px;
+}
+
+.product-costs-intro h2,
+.product-cost-sheet-header h2 {
+  margin: 3px 0 6px;
+  font-size: 26px;
+  line-height: 1.1;
+}
+
+.product-costs-intro > p:last-child {
+  color: #9da49c;
+  font-size: 13px;
+}
+
+.product-cost-grid,
+.product-cost-gender-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  max-width: 760px;
+}
+
+.product-cost-choice {
+  display: flex;
+  min-height: 112px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 6px;
+  padding: 20px;
+  border: 1px solid #303630;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 90% 10%, rgba(198,255,61,.10), transparent 34%),
+    #151815;
+  color: #eef1ea;
+  text-align: left;
+  cursor: pointer;
+  transition: .18s ease;
+}
+
+.product-cost-choice:hover {
+  transform: translateY(-1px);
+  border-color: rgba(198,255,61,.45);
+  background:
+    radial-gradient(circle at 90% 10%, rgba(198,255,61,.16), transparent 36%),
+    #171a17;
+}
+
+.product-cost-choice strong {
+  font-size: 18px;
+}
+
+.product-cost-choice span {
+  color: #9ea49d;
+  font-size: 12px;
+}
+
+.product-cost-sheet-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.product-cost-back {
+  margin: 0 0 12px -10px;
+}
+
+.product-cost-loading {
+  display: flex;
+  min-height: 260px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #9ea49d;
+}
+
+.product-cost-main-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(380px, .85fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.product-cost-table-card,
+.product-cost-summary-card {
+  overflow: hidden;
+  border: 1px solid #303530;
+  border-radius: 16px;
+  background: #141714;
+}
+
+.product-cost-table-scroll {
+  overflow-x: auto;
+}
+
+.product-cost-table {
+  width: 100%;
+  min-width: 680px;
+  border-collapse: collapse;
+}
+
+.product-cost-table th,
+.product-cost-table td {
+  border-right: 1px solid #303530;
+  border-bottom: 1px solid #303530;
+  padding: 8px;
+  text-align: left;
+}
+
+.product-cost-table th:last-child,
+.product-cost-table td:last-child {
+  border-right: 0;
+}
+
+.product-cost-table th {
+  background: rgba(198,255,61,.12);
+  color: #eaf1df;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .02em;
+}
+
+.product-cost-table th:nth-child(1) { width: 26%; }
+.product-cost-table th:nth-child(2) { width: 22%; }
+.product-cost-table th:nth-child(3) { width: auto; }
+.product-cost-table th:nth-child(4) { width: 48px; }
+
+.product-cost-table input {
+  width: 100%;
+  height: 36px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.product-cost-table input:focus {
+  border-color: #4a5249;
+  background: #101210;
+}
+
+.product-cost-table tfoot td {
+  background: #1b1e1b;
+  color: #dfe4dc;
+}
+
+.product-cost-money-input {
+  position: relative;
+  width: 100%;
+}
+
+.product-cost-money-input > span {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  z-index: 2;
+  transform: translateY(-50%);
+  color: #9ea49d;
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.product-cost-money-input input {
+  padding-left: 28px !important;
+}
+
+.product-cost-add-row {
+  margin: 12px;
+}
+
+.product-cost-selling-price {
+  padding: 14px;
+  border-top: 1px solid #303530;
+  background: #101310;
+}
+
+.product-cost-selling-price label {
+  display: grid;
+  grid-template-columns: 1fr minmax(180px, 230px);
+  align-items: center;
+  gap: 12px;
+}
+
+.product-cost-selling-price label > span {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+.product-cost-money-input.large input {
+  height: 42px;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.product-cost-summary-card {
+  display: grid;
+  border-radius: 14px;
+}
+
+.product-cost-summary-row {
+  display: grid;
+  grid-template-columns: minmax(135px, .9fr) minmax(200px, 1.1fr);
+  min-height: 48px;
+  align-items: center;
+  border-bottom: 1px solid #303530;
+}
+
+.product-cost-summary-row > strong,
+.product-cost-summary-row > span,
+.product-cost-summary-row > label {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  padding: 10px 14px;
+}
+
+.product-cost-summary-row > strong {
+  justify-content: center;
+  border-right: 1px solid #303530;
+  font-size: 13px;
+}
+
+.product-cost-summary-row > span,
+.product-cost-summary-row > label {
+  justify-content: center;
+  text-align: center;
+  color: #dfe3dc;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: .02em;
+}
+
+.product-cost-summary-row.selling > strong {
+  color: #ff7777;
+  background: rgba(83,125,255,.14);
+}
+
+.product-cost-summary-row.margin > strong {
+  color: #c7ff3d;
+  background: rgba(106,187,71,.28);
+}
+
+.product-cost-summary-row.net-margin > strong {
+  color: #08110a;
+  background: #29dfd4;
+}
+
+.product-cost-summary-row.ebitda {
+  background: #242824;
+}
+
+.product-cost-summary-row.ebitda > strong {
+  color: #c7ff3d;
+}
+
+.product-cost-summary-spacer {
+  height: 18px;
+  border-bottom: 1px solid #303530;
+  background: #101210;
+}
+
+.editable-rate-row label {
+  gap: 5px;
+  padding: 6px 10px !important;
+}
+
+.editable-rate-row label input {
+  width: 58px;
+  height: 32px;
+  padding: 0 6px;
+  text-align: right;
+  font-size: 12px;
+}
+
+.editable-rate-row label span {
+  white-space: nowrap;
+}
+
+.product-cost-formula-note {
+  margin: -4px 2px 0;
+  color: #7f877e;
+  font-size: 11px;
+}
+
+@media (max-width: 1000px) {
+  .product-cost-main-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .product-cost-grid,
+  .product-cost-gender-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .product-cost-choice {
+    min-height: 88px;
+    padding: 14px;
+    border-radius: 12px;
+  }
+
+  .product-cost-choice strong {
+    font-size: 15px;
+  }
+
+  .product-cost-sheet-header {
+    align-items: center;
+  }
+
+  .product-cost-sheet-header h2 {
+    font-size: 20px;
+  }
+
+  .product-cost-sheet-header > .primary-button {
+    width: 40px !important;
+    min-width: 40px !important;
+    height: 40px !important;
+    padding: 0 !important;
+    font-size: 0 !important;
+  }
+
+  .product-cost-sheet-header > .primary-button svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .product-cost-table input,
+  .product-cost-selling-price input,
+  .editable-rate-row input {
+    font-size: 16px !important;
+  }
+
+  .product-cost-selling-price label {
+    grid-template-columns: 1fr;
+  }
+
+  .product-cost-summary-card {
+    overflow-x: auto;
+  }
+
+  .product-cost-summary-row {
+    min-width: 500px;
+  }
+}
+
+
+/* =========================================================
+   PRODUCT COSTS — DYNAMIC PRODUCT CATALOG
+   ========================================================= */
+.product-costs-home-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.product-cost-empty {
+  min-height: 250px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 28px;
+  border: 1px dashed #343a34;
+  border-radius: 16px;
+  background: #131613;
+  text-align: center;
+  color: #939b92;
+}
+
+.product-cost-empty strong {
+  color: #edf1e9;
+  font-size: 16px;
+}
+
+.product-cost-choice {
+  position: relative;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+}
+
+.product-cost-choice-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.product-cost-choice-copy strong,
+.product-cost-choice-copy span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-cost-choice-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  margin-left: 12px;
+}
+
+.product-cost-choice-actions > span {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #333933;
+  border-radius: 9px;
+  background: #111411;
+  color: #a9b0a8;
+  cursor: pointer;
+  transition: .15s ease;
+}
+
+.product-cost-choice-actions > span:hover {
+  border-color: #4b5549;
+  color: #eef2ea;
+}
+
+.product-catalog-dialog {
+  width: min(560px, calc(100vw - 24px));
+}
+
+.product-catalog-form {
+  display: grid;
+  gap: 18px;
+  margin: 20px 0;
+}
+
+.product-catalog-variants {
+  display: grid;
+  gap: 9px;
+}
+
+.product-catalog-variants-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.product-catalog-variants-header > span {
+  font-size: 12px;
+  font-weight: 750;
+  color: #d9ddd6;
+}
+
+.product-catalog-variant-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px;
+  gap: 8px;
+  align-items: center;
+}
+
+.product-catalog-variant-row input {
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .product-costs-home-header {
+    align-items: center;
+  }
+
+  .product-costs-home-header > .primary-button {
+    width: 40px !important;
+    min-width: 40px !important;
+    height: 40px !important;
+    padding: 0 !important;
+    font-size: 0 !important;
+  }
+
+  .product-costs-home-header > .primary-button svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .product-catalog-dialog input,
+  .product-catalog-dialog button {
+    font-size: 16px;
+  }
+
+  .product-cost-choice-actions > span {
+    width: 30px;
+    height: 30px;
+  }
+}
+
+
+/* =========================================================
+   PRODUCT COSTS — FINAL CURRENCY PREFIX FIX
+   Peso symbol is a separate grid cell, never over the number.
+   ========================================================= */
+.product-costs-page .product-cost-money-field {
+  display: grid !important;
+  grid-template-columns: 34px minmax(0, 1fr) !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 38px !important;
+  overflow: hidden !important;
+  border: 1px solid #303630 !important;
+  border-radius: 8px !important;
+  background: #0f120f !important;
+}
+
+.product-costs-page .product-cost-money-field .product-cost-currency {
+  position: static !important;
+  inset: auto !important;
+  transform: none !important;
+  display: flex !important;
+  width: 34px !important;
+  height: 100% !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-right: 1px solid #303630 !important;
+  background: #151915 !important;
+  color: #8f988e !important;
+  font-size: 12px !important;
+  line-height: 1 !important;
+  pointer-events: none !important;
+}
+
+.product-costs-page .product-cost-money-field input {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 10px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #eef1eb !important;
+  text-indent: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.product-costs-page .product-cost-money-field:focus-within {
+  border-color: #596456 !important;
+}
+
+.product-costs-page .product-cost-money-field.large {
+  grid-template-columns: 38px minmax(0, 1fr) !important;
+  height: 42px !important;
+}
+
+.product-costs-page .product-cost-money-field.large .product-cost-currency {
+  width: 38px !important;
+  font-size: 13px !important;
+}
+
+.product-costs-page .product-cost-money-field.large input {
+  font-size: 16px !important;
+  font-weight: 800 !important;
+}
+
+/* Disable old absolute peso rules for these new wrappers */
+.product-costs-page .product-cost-money-field > span {
+  position: static !important;
+}
+
+@media (max-width: 640px) {
+  .product-costs-page .product-cost-money-field {
+    grid-template-columns: 36px minmax(0, 1fr) !important;
+    height: 42px !important;
+  }
+
+  .product-costs-page .product-cost-money-field .product-cost-currency {
+    width: 36px !important;
+    font-size: 13px !important;
+  }
+
+  .product-costs-page .product-cost-money-field input {
+    padding: 0 10px !important;
+    font-size: 16px !important;
+  }
+
+  .product-costs-page .product-cost-money-field.large {
+    grid-template-columns: 40px minmax(0, 1fr) !important;
+    height: 44px !important;
+  }
+
+  .product-costs-page .product-cost-money-field.large .product-cost-currency {
+    width: 40px !important;
+  }
+}
+
+
+/* =========================================================
+   PRODUCT COSTS — LEFT-ALIGNED CURRENCY FIELD
+   Keep peso at the far left and amount immediately beside it.
+   ========================================================= */
+.product-costs-page .product-cost-money-field {
+  justify-content: start !important;
+}
+
+.product-costs-page .product-cost-money-field .product-cost-currency {
+  justify-content: flex-start !important;
+  padding-left: 10px !important;
+}
+
+.product-costs-page .product-cost-money-field input {
+  text-align: left !important;
+  padding-left: 10px !important;
+  padding-right: 10px !important;
+}
+
+.product-costs-page .product-cost-money-field.large .product-cost-currency {
+  justify-content: flex-start !important;
+  padding-left: 12px !important;
+}
+
+.product-costs-page .product-cost-money-field.large input {
+  text-align: left !important;
+  padding-left: 10px !important;
+}

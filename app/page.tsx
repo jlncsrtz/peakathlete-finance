@@ -22,6 +22,7 @@ import {
   LayoutDashboard,
   Loader2,
   Package,
+  PackageSearch,
   Pencil,
   Plus,
   ReceiptText,
@@ -38,6 +39,9 @@ import {
   FinanceSuite,
   type FinanceView,
 } from "@/components/finance-suite";
+
+import { AthleteReceipts } from "@/components/athlete-receipts";
+import { ProductCosts } from "@/components/product-costs";
 
 import {
   AlertDialog,
@@ -101,6 +105,8 @@ import { Toaster } from "@/components/ui/sonner";
 type View =
   | "overview"
   | "expenses"
+  | "athleteReceipts"
+  | "productCosts"
   | FinanceView;
 
 type Expense = {
@@ -593,6 +599,22 @@ export default function Home() {
 
       title:
         "Reports",
+    },
+
+    athleteReceipts: {
+      eyebrow:
+        "ATHLETE RECORDS",
+
+      title:
+        "Athlete receipts",
+    },
+
+    productCosts: {
+      eyebrow:
+        "PRODUCT PROFITABILITY",
+
+      title:
+        "Product costs",
     },
   };
 
@@ -1584,6 +1606,46 @@ export default function Home() {
                     </b>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    isActive={
+                      view ===
+                      "athleteReceipts"
+                    }
+                    onClick={() =>
+                      setView(
+                        "athleteReceipts",
+                      )
+                    }
+                  >
+                    <FileImage />
+
+                    <span>
+                      Athlete receipts
+                    </span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    isActive={
+                      view ===
+                      "productCosts"
+                    }
+                    onClick={() =>
+                      setView(
+                        "productCosts",
+                      )
+                    }
+                  >
+                    <PackageSearch />
+
+                    <span>
+                      Product costs
+                    </span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -1764,63 +1826,66 @@ export default function Home() {
           </div>
 
           <div className="topbar-actions">
-            <label
-              className="month-picker"
-              aria-label="Select month"
-            >
-              <CalendarDays
-                size={17}
-              />
-
-              <input
-                type="month"
-                value={monthInput}
-                onClick={(event) => {
-                  try {
-                    event.currentTarget.showPicker?.();
-                  } catch {
-                    // Native picker is not available in every browser.
-                  }
-                }}
-                onChange={(
-                  event,
-                ) => {
-                  const value =
-                    event.target
-                      .value;
-
-                  setMonthInput(
-                    value,
-                  );
-
-                  if (
-                    /^(\d{4})-(0[1-9]|1[0-2])$/.test(
-                      value,
-                    )
-                  ) {
-                    setMonth(
-                      value,
-                    );
-                  }
-                }}
-                onBlur={() => {
-                  if (
-                    !/^(\d{4})-(0[1-9]|1[0-2])$/.test(
-                      monthInput,
-                    )
-                  ) {
-                    setMonthInput(
-                      month,
-                    );
-                  }
-                }}
+            {view !==
+              "productCosts" && (
+              <label
+                className="month-picker"
                 aria-label="Select month"
-              />
+              >
+                <CalendarDays
+                  size={17}
+                />
 
-              <ChevronDown
-                size={15}
-              />
-            </label>
+                <input
+                  type="month"
+                  value={monthInput}
+                  onClick={(event) => {
+                    try {
+                      event.currentTarget.showPicker?.();
+                    } catch {
+                      // Native picker is not available in every browser.
+                    }
+                  }}
+                  onChange={(
+                    event,
+                  ) => {
+                    const value =
+                      event.target
+                        .value;
+
+                    setMonthInput(
+                      value,
+                    );
+
+                    if (
+                      /^(\d{4})-(0[1-9]|1[0-2])$/.test(
+                        value,
+                      )
+                    ) {
+                      setMonth(
+                        value,
+                      );
+                    }
+                  }}
+                  onBlur={() => {
+                    if (
+                      !/^(\d{4})-(0[1-9]|1[0-2])$/.test(
+                        monthInput,
+                      )
+                    ) {
+                      setMonthInput(
+                        month,
+                      );
+                    }
+                  }}
+                  aria-label="Select month"
+                />
+
+                <ChevronDown
+                  size={15}
+                />
+              </label>
+            )}
 
             {expenseView && (
               <Button
@@ -1926,6 +1991,14 @@ export default function Home() {
                 }
               />
             )
+          ) : view ===
+            "athleteReceipts" ? (
+            <AthleteReceipts
+              month={month}
+            />
+          ) : view ===
+            "productCosts" ? (
+            <ProductCosts />
           ) : (
             <FinanceSuite
               key={month}
