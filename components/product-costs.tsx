@@ -94,6 +94,10 @@ function percent(value: number) {
   return `${(Number.isFinite(value) ? value : 0).toFixed(2)}%`;
 }
 
+function numberInputValue(value: number) {
+  return value === 0 ? "" : value;
+}
+
 function cleanVariants(values: string[]) {
   const seen = new Set<string>();
 
@@ -1187,7 +1191,7 @@ export function ProductCosts() {
                               type="number"
                               min="0"
                               step="0.01"
-                              value={row.costPerUnit}
+                              value={numberInputValue(row.costPerUnit)}
                               onChange={(event) =>
                                 updateCostItem(
                                   row.id,
@@ -1265,7 +1269,7 @@ export function ProductCosts() {
                       type="number"
                       min="0"
                       step="0.01"
-                      value={sellingPrice}
+                      value={numberInputValue(sellingPrice)}
                       onChange={(event) =>
                         setSellingPrice(
                           Number(event.target.value) || 0,
@@ -1283,22 +1287,30 @@ export function ProductCosts() {
                 <span>COST OF GOODS</span>
               </div>
 
-              <div className="product-cost-summary-row editable-rate-row">
+              <div className="product-cost-summary-row editable-rate-row commission-fee-row">
                 <strong>{money(totals.commission)}</strong>
-                <label>
-                  <Input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.01"
-                    value={commissionRate}
-                    onChange={(event) =>
-                      setCommissionRate(
-                        Number(event.target.value) || 0,
-                      )
-                    }
-                  />
-                  <span>% COMMISSIONS & PLATFORM FEES</span>
+
+                <label className="commission-fee-control">
+                  <div className="commission-percent-input">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      value={numberInputValue(commissionRate)}
+                      placeholder="0"
+                      onChange={(event) =>
+                        setCommissionRate(
+                          Number(event.target.value) || 0,
+                        )
+                      }
+                    />
+                    <span>%</span>
+                  </div>
+
+                  <span className="commission-fee-label">
+                    COMMISSIONS &amp; PLATFORM FEES
+                  </span>
                 </label>
               </div>
 
@@ -1334,7 +1346,7 @@ export function ProductCosts() {
                     min="0"
                     max="100"
                     step="0.01"
-                    value={taxRate}
+                    value={numberInputValue(taxRate)}
                     onChange={(event) =>
                       setTaxRate(
                         Number(event.target.value) || 0,
@@ -1353,7 +1365,7 @@ export function ProductCosts() {
                     min="0"
                     max="100"
                     step="0.01"
-                    value={opexRate}
+                    value={numberInputValue(opexRate)}
                     onChange={(event) =>
                       setOpexRate(
                         Number(event.target.value) || 0,

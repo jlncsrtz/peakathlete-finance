@@ -2799,3 +2799,97 @@ table { border-top: 1px solid #262a26; } thead { background: #101210; } th { hei
     font-size: 16px !important;
   }
 }
+
+
+/* =========================================================
+   PRODUCT COSTS — BLANK ZERO + COMMISSION INPUT FIX
+   ========================================================= */
+
+/* Keep zero values visually empty via React value="", but preserve layout */
+.product-costs-page input[type="number"]::placeholder {
+  color: transparent !important;
+}
+
+/* Commission/platform fee gets its own clean layout */
+.product-costs-page .commission-fee-row > label.commission-fee-control {
+  display: grid !important;
+  grid-template-columns: 92px minmax(0, 1fr) !important;
+  align-items: center !important;
+  justify-content: stretch !important;
+  gap: 10px !important;
+  width: 100% !important;
+  padding: 7px 10px !important;
+  text-align: left !important;
+}
+
+.product-costs-page .commission-percent-input {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 28px !important;
+  width: 92px !important;
+  height: 34px !important;
+  overflow: hidden !important;
+  border: 1px solid #343a34 !important;
+  border-radius: 8px !important;
+  background: #0f120f !important;
+}
+
+.product-costs-page .commission-percent-input input {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 8px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #eef1eb !important;
+  text-align: right !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.product-costs-page .commission-percent-input > span {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-left: 1px solid #343a34 !important;
+  background: #151915 !important;
+  color: #9aa199 !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+}
+
+.product-costs-page .commission-percent-input:focus-within {
+  border-color: #596456 !important;
+}
+
+.product-costs-page .commission-fee-label {
+  min-width: 0 !important;
+  color: #dfe3dc !important;
+  font-size: 11px !important;
+  font-weight: 750 !important;
+  line-height: 1.25 !important;
+  letter-spacing: .02em !important;
+  white-space: normal !important;
+  text-align: left !important;
+}
+
+@media (max-width: 640px) {
+  .product-costs-page .commission-fee-row > label.commission-fee-control {
+    grid-template-columns: 86px minmax(0, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .product-costs-page .commission-percent-input {
+    width: 86px !important;
+    height: 38px !important;
+  }
+
+  .product-costs-page .commission-percent-input input {
+    font-size: 16px !important;
+  }
+
+  .product-costs-page .commission-fee-label {
+    font-size: 10px !important;
+  }
+}
