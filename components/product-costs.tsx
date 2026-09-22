@@ -31,6 +31,13 @@ import { Input } from "@/components/ui/input";
 type CatalogProduct = {
   id: string;
   name: string;
+  createdAt?: string;
+};
+
+type CatalogItem = {
+  id: string;
+  productId: string;
+  name: string;
   variants: string[];
   createdAt?: string;
 };
@@ -45,6 +52,8 @@ type CostItem = {
 type CostSheet = {
   productId: string;
   productName: string;
+  itemId: string;
+  itemName: string;
   variant: string;
   sellingPrice: number;
   commissionRate: number;
@@ -100,10 +109,12 @@ function cleanVariants(values: string[]) {
 }
 
 export function ProductCosts() {
-  const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
+  const [products, setProducts] = useState<CatalogProduct[]>([]);
+  const [itemsCatalog, setItemsCatalog] = useState<CatalogItem[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
 
   const [selectedProductId, setSelectedProductId] = useState("");
+  const [selectedItemId, setSelectedItemId] = useState("");
   const [variant, setVariant] = useState("");
 
   const [loading, setLoading] = useState(false);
@@ -113,31 +124,45 @@ export function ProductCosts() {
   const [commissionRate, setCommissionRate] = useState(30);
   const [taxRate, setTaxRate] = useState(25);
   const [opexRate, setOpexRate] = useState(20);
-  const [items, setItems] = useState<CostItem[]>(blankItems());
+  const [costItems, setCostItems] = useState<CostItem[]>(blankItems());
 
   const [productDialogOpen, setProductDialogOpen] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<CatalogProduct | null>(
-    null,
-  );
-  const [deleteProduct, setDeleteProduct] = useState<CatalogProduct | null>(
-    null,
-  );
+  const [editingProduct, setEditingProduct] = useState<CatalogProduct | null>(null);
+  const [deleteProduct, setDeleteProduct] = useState<CatalogProduct | null>(null);
   const [productNameDraft, setProductNameDraft] = useState("");
+
+  const [itemDialogOpen, setItemDialogOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<CatalogItem | null>(null);
+  const [deleteItem, setDeleteItem] = useState<CatalogItem | null>(null);
+  const [itemNameDraft, setItemNameDraft] = useState("");
   const [variantDrafts, setVariantDrafts] = useState<string[]>(["Men", "Women"]);
+
   const [catalogSaving, setCatalogSaving] = useState(false);
 
-  const selectedProduct = catalog.find(
+  const selectedProduct = products.find(
     (entry) => entry.id === selectedProductId,
   );
 
-  const sheetReady = Boolean(selectedProductId && variant);
+  const selectedItem = itemsCatalog.find(
+    (entry) => entry.id === selectedItemId,
+  );
+
+  const productItems = itemsCatalog.filter(
+    (entry) => entry.productId === selectedProductId,
+  );
+
+  const sheetReady = Boolean(
+    selectedProductId &&
+      selectedItemId &&
+      variant,
+  );
 
   const resetSheet = useCallback(() => {
     setSellingPrice(0);
     setCommissionRate(30);
     setTaxRate(25);
     setOpexRate(20);
-    setItems(blankItems());
+    setCostItems(blankItems());
   }, []);
 
   const loadCatalog = useCallback(async () => {
@@ -150,17 +175,21 @@ export function ProductCosts() {
 
       const result = (await response.json()) as {
         products?: CatalogProduct[];
+        items?: CatalogItem[];
         error?: string;
       };
 
       if (!response.ok) {
-        throw new Error(result.error ?? "Couldn’t load products.");
+        throw new Error(result.error ?? "Couldn’t load product costs.");
       }
 
-      setCatalog(result.products ?? []);
+      setProducts(result.products ?? []);
+      setItemsCatalog(result.items ?? []);
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Couldn’t load products.",
+        error instanceof Error
+          ? error.message
+          : "Couldn’t load product costs.",
       );
     } finally {
       setCatalogLoading(false);
@@ -172,7 +201,7 @@ export function ProductCosts() {
   }, [loadCatalog]);
 
   const loadSheet = useCallback(async () => {
-    if (!selectedProductId || !variant) return;
+    if (!selectedProductId || !selectedItemId || !variant) return;
 
     setLoading(true);
 
@@ -180,6 +209,8 @@ export function ProductCosts() {
       const response = await fetch(
         `/api/product-costs?mode=sheet&productId=${encodeURIComponent(
           selectedProductId,
+        )}&itemId=${encodeURIComponent(
+          selectedItemId,
         )}&variant=${encodeURIComponent(variant)}`,
         { cache: "no-store" },
       );
@@ -202,13 +233,14 @@ export function ProductCosts() {
       setCommissionRate(Number(result.sheet.commissionRate) || 0);
       setTaxRate(Number(result.sheet.taxRate) || 0);
       setOpexRate(Number(result.sheet.opexRate) || 0);
-      setItems(
+
+      setCostItems(
         Array.isArray(result.sheet.items) && result.sheet.items.length
-          ? result.sheet.items.map((item) => ({
-              id: item.id || crypto.randomUUID(),
-              item: item.item ?? "",
-              costPerUnit: Number(item.costPerUnit) || 0,
-              note: item.note ?? "",
+          ? result.sheet.items.map((entry) => ({
+              id: entry.id || crypto.randomUUID(),
+              item: entry.item ?? "",
+              costPerUnit: Number(entry.costPerUnit) || 0,
+              note: entry.note ?? "",
             }))
           : blankItems(),
       );
@@ -221,14 +253,19 @@ export function ProductCosts() {
     } finally {
       setLoading(false);
     }
-  }, [selectedProductId, variant, resetSheet]);
+  }, [
+    selectedProductId,
+    selectedItemId,
+    variant,
+    resetSheet,
+  ]);
 
   useEffect(() => {
     if (sheetReady) void loadSheet();
   }, [sheetReady, loadSheet]);
 
   const totals = useMemo(() => {
-    const cogs = items.reduce(
+    const cogs = costItems.reduce(
       (sum, item) => sum + (Number(item.costPerUnit) || 0),
       0,
     );
@@ -264,7 +301,7 @@ export function ProductCosts() {
       ebitdaMargin,
     };
   }, [
-    items,
+    costItems,
     sellingPrice,
     commissionRate,
     taxRate,
@@ -273,19 +310,25 @@ export function ProductCosts() {
 
   const chooseProduct = (product: CatalogProduct) => {
     setSelectedProductId(product.id);
+    setSelectedItemId("");
+    setVariant("");
+  };
+
+  const chooseItem = (item: CatalogItem) => {
+    setSelectedItemId(item.id);
     setVariant("");
 
-    if (product.variants.length === 1) {
-      setVariant(product.variants[0]);
+    if (item.variants.length === 1) {
+      setVariant(item.variants[0]);
     }
   };
 
-  const updateItem = (
+  const updateCostItem = (
     id: string,
     key: keyof Pick<CostItem, "item" | "costPerUnit" | "note">,
     value: string,
   ) => {
-    setItems((current) =>
+    setCostItems((current) =>
       current.map((row) =>
         row.id === id
           ? {
@@ -300,8 +343,8 @@ export function ProductCosts() {
     );
   };
 
-  const addRow = () => {
-    setItems((current) => [
+  const addCostRow = () => {
+    setCostItems((current) => [
       ...current,
       {
         id: crypto.randomUUID(),
@@ -312,12 +355,14 @@ export function ProductCosts() {
     ]);
   };
 
-  const removeRow = (id: string) => {
-    setItems((current) => current.filter((row) => row.id !== id));
+  const removeCostRow = (id: string) => {
+    setCostItems((current) =>
+      current.filter((row) => row.id !== id),
+    );
   };
 
   const saveSheet = async () => {
-    if (!sheetReady || !selectedProduct) return;
+    if (!selectedProduct || !selectedItem || !variant) return;
 
     setSaving(true);
 
@@ -328,12 +373,13 @@ export function ProductCosts() {
         body: JSON.stringify({
           action: "saveSheet",
           productId: selectedProduct.id,
+          itemId: selectedItem.id,
           variant,
           sellingPrice,
           commissionRate,
           taxRate,
           opexRate,
-          items,
+          items: costItems,
         }),
       });
 
@@ -343,7 +389,9 @@ export function ProductCosts() {
         throw new Error(result.error ?? "Couldn’t save product costs.");
       }
 
-      toast.success(`${selectedProduct.name} · ${variant} costs saved`);
+      toast.success(
+        `${selectedProduct.name} · ${selectedItem.name} · ${variant} saved`,
+      );
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -358,7 +406,6 @@ export function ProductCosts() {
   const openAddProduct = () => {
     setEditingProduct(null);
     setProductNameDraft("");
-    setVariantDrafts(["Men", "Women"]);
     setProductDialogOpen(true);
   };
 
@@ -369,49 +416,16 @@ export function ProductCosts() {
     event.stopPropagation();
     setEditingProduct(product);
     setProductNameDraft(product.name);
-    setVariantDrafts(product.variants.length ? [...product.variants] : [""]);
     setProductDialogOpen(true);
-  };
-
-  const requestDeleteProduct = (
-    event: React.MouseEvent,
-    product: CatalogProduct,
-  ) => {
-    event.stopPropagation();
-    setDeleteProduct(product);
-  };
-
-  const addVariantDraft = () => {
-    setVariantDrafts((current) => [...current, ""]);
-  };
-
-  const updateVariantDraft = (index: number, value: string) => {
-    setVariantDrafts((current) =>
-      current.map((entry, entryIndex) =>
-        entryIndex === index ? value : entry,
-      ),
-    );
-  };
-
-  const removeVariantDraft = (index: number) => {
-    setVariantDrafts((current) =>
-      current.filter((_, entryIndex) => entryIndex !== index),
-    );
   };
 
   const saveProduct = async (event: FormEvent) => {
     event.preventDefault();
 
-    const cleanName = productNameDraft.trim();
-    const variants = cleanVariants(variantDrafts);
+    const name = productNameDraft.trim();
 
-    if (!cleanName) {
+    if (!name) {
       toast.error("Enter a product name.");
-      return;
-    }
-
-    if (!variants.length) {
-      toast.error("Add at least one variant.");
       return;
     }
 
@@ -424,13 +438,11 @@ export function ProductCosts() {
         body: JSON.stringify({
           action: editingProduct ? "updateProduct" : "createProduct",
           id: editingProduct?.id,
-          name: cleanName,
-          variants,
+          name,
         }),
       });
 
       const result = (await response.json()) as {
-        product?: CatalogProduct;
         error?: string;
       };
 
@@ -440,15 +452,6 @@ export function ProductCosts() {
 
       setProductDialogOpen(false);
       await loadCatalog();
-
-      if (editingProduct && selectedProductId === editingProduct.id) {
-        const updatedVariants = result.product?.variants ?? variants;
-
-        if (!updatedVariants.includes(variant)) {
-          setVariant("");
-        }
-      }
-
       toast.success(editingProduct ? "Product updated" : "Product added");
     } catch (error) {
       toast.error(
@@ -480,6 +483,7 @@ export function ProductCosts() {
 
       if (selectedProductId === deleteProduct.id) {
         setSelectedProductId("");
+        setSelectedItemId("");
         setVariant("");
       }
 
@@ -495,6 +499,144 @@ export function ProductCosts() {
     }
   };
 
+  const openAddItem = () => {
+    setEditingItem(null);
+    setItemNameDraft("");
+    setVariantDrafts(["Men", "Women"]);
+    setItemDialogOpen(true);
+  };
+
+  const openEditItem = (
+    event: React.MouseEvent,
+    item: CatalogItem,
+  ) => {
+    event.stopPropagation();
+    setEditingItem(item);
+    setItemNameDraft(item.name);
+    setVariantDrafts(
+      item.variants.length ? [...item.variants] : [""],
+    );
+    setItemDialogOpen(true);
+  };
+
+  const addVariantDraft = () => {
+    setVariantDrafts((current) => [...current, ""]);
+  };
+
+  const updateVariantDraft = (index: number, value: string) => {
+    setVariantDrafts((current) =>
+      current.map((entry, entryIndex) =>
+        entryIndex === index ? value : entry,
+      ),
+    );
+  };
+
+  const removeVariantDraft = (index: number) => {
+    setVariantDrafts((current) =>
+      current.filter((_, entryIndex) => entryIndex !== index),
+    );
+  };
+
+  const saveCatalogItem = async (event: FormEvent) => {
+    event.preventDefault();
+
+    if (!selectedProductId) return;
+
+    const name = itemNameDraft.trim();
+    const variants = cleanVariants(variantDrafts);
+
+    if (!name) {
+      toast.error("Enter an item name.");
+      return;
+    }
+
+    if (!variants.length) {
+      toast.error("Add at least one variant.");
+      return;
+    }
+
+    setCatalogSaving(true);
+
+    try {
+      const response = await fetch("/api/product-costs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: editingItem ? "updateItem" : "createItem",
+          id: editingItem?.id,
+          productId: selectedProductId,
+          name,
+          variants,
+        }),
+      });
+
+      const result = (await response.json()) as {
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(result.error ?? "Couldn’t save item.");
+      }
+
+      setItemDialogOpen(false);
+
+      if (
+        editingItem &&
+        selectedItemId === editingItem.id &&
+        !variants.some(
+          (entry) => entry.toLowerCase() === variant.toLowerCase(),
+        )
+      ) {
+        setVariant("");
+      }
+
+      await loadCatalog();
+      toast.success(editingItem ? "Item updated" : "Item added");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Couldn’t save item.",
+      );
+    } finally {
+      setCatalogSaving(false);
+    }
+  };
+
+  const confirmDeleteItem = async () => {
+    if (!deleteItem) return;
+
+    setCatalogSaving(true);
+
+    try {
+      const response = await fetch(
+        `/api/product-costs?mode=item&id=${encodeURIComponent(
+          deleteItem.id,
+        )}`,
+        { method: "DELETE" },
+      );
+
+      const result = (await response.json()) as { error?: string };
+
+      if (!response.ok) {
+        throw new Error(result.error ?? "Couldn’t delete item.");
+      }
+
+      if (selectedItemId === deleteItem.id) {
+        setSelectedItemId("");
+        setVariant("");
+      }
+
+      setDeleteItem(null);
+      await loadCatalog();
+      toast.success("Item deleted");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Couldn’t delete item.",
+      );
+    } finally {
+      setCatalogSaving(false);
+    }
+  };
+
   if (!selectedProductId) {
     return (
       <section className="product-costs-page">
@@ -503,7 +645,7 @@ export function ProductCosts() {
             <p className="eyebrow">PRODUCT COST SHEETS</p>
             <h2>Choose a product</h2>
             <p>
-              Select a product to open its cost sheet, or add a new product.
+              Choose a product category first, then choose the specific item.
             </p>
           </div>
 
@@ -522,22 +664,9 @@ export function ProductCosts() {
             <Loader2 className="spin" size={22} />
             Loading products…
           </div>
-        ) : catalog.length === 0 ? (
-          <div className="product-cost-empty">
-            <strong>No products yet</strong>
-            <span>Add your first product to start building cost sheets.</span>
-            <Button
-              type="button"
-              className="primary-button"
-              onClick={openAddProduct}
-            >
-              <Plus size={17} />
-              Add product
-            </Button>
-          </div>
         ) : (
           <div className="product-cost-grid">
-            {catalog.map((product) => (
+            {products.map((product) => (
               <button
                 key={product.id}
                 type="button"
@@ -546,7 +675,14 @@ export function ProductCosts() {
               >
                 <div className="product-cost-choice-copy">
                   <strong>{product.name}</strong>
-                  <span>{product.variants.join(" · ")}</span>
+                  <span>
+                    {
+                      itemsCatalog.filter(
+                        (item) => item.productId === product.id,
+                      ).length
+                    }{" "}
+                    item(s)
+                  </span>
                 </div>
 
                 <div className="product-cost-choice-actions">
@@ -554,16 +690,9 @@ export function ProductCosts() {
                     role="button"
                     tabIndex={0}
                     aria-label={`Edit ${product.name}`}
-                    onClick={(event) => openEditProduct(event, product)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        openEditProduct(
-                          event as unknown as React.MouseEvent,
-                          product,
-                        );
-                      }
-                    }}
+                    onClick={(event) =>
+                      openEditProduct(event, product)
+                    }
                   >
                     <Edit3 size={15} />
                   </span>
@@ -572,15 +701,9 @@ export function ProductCosts() {
                     role="button"
                     tabIndex={0}
                     aria-label={`Delete ${product.name}`}
-                    onClick={(event) => requestDeleteProduct(event, product)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        requestDeleteProduct(
-                          event as unknown as React.MouseEvent,
-                          product,
-                        );
-                      }
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setDeleteProduct(product);
                     }}
                   >
                     <Trash2 size={15} />
@@ -591,7 +714,10 @@ export function ProductCosts() {
           </div>
         )}
 
-        <Dialog open={productDialogOpen} onOpenChange={setProductDialogOpen}>
+        <Dialog
+          open={productDialogOpen}
+          onOpenChange={setProductDialogOpen}
+        >
           <DialogContent className="product-catalog-dialog">
             <form onSubmit={saveProduct}>
               <DialogHeader>
@@ -600,8 +726,7 @@ export function ProductCosts() {
                   {editingProduct ? "Edit product" : "Add product"}
                 </DialogTitle>
                 <DialogDescription>
-                  Add the product name and the variants that should have separate
-                  cost sheets.
+                  Example: Compression Shirt, Pants, Oversize, Stringer.
                 </DialogDescription>
               </DialogHeader>
 
@@ -613,7 +738,201 @@ export function ProductCosts() {
                     onChange={(event) =>
                       setProductNameDraft(event.target.value)
                     }
-                    placeholder="e.g. Sports Bra"
+                    placeholder="e.g. Compression Shirt"
+                    required
+                  />
+                </label>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setProductDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+
+                <Button
+                  type="submit"
+                  className="primary-button"
+                  disabled={catalogSaving}
+                >
+                  {catalogSaving ? (
+                    <Loader2 className="spin" size={17} />
+                  ) : (
+                    <Save size={17} />
+                  )}
+                  Save
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={Boolean(deleteProduct)}
+          onOpenChange={(open) => {
+            if (!open) setDeleteProduct(null);
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete product?</DialogTitle>
+              <DialogDescription>
+                {deleteProduct
+                  ? `${deleteProduct.name}, all of its items, and their cost sheets will be deleted.`
+                  : ""}
+              </DialogDescription>
+            </DialogHeader>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDeleteProduct(null)}
+              >
+                Cancel
+              </Button>
+
+              <Button
+                type="button"
+                onClick={confirmDeleteProduct}
+                disabled={catalogSaving}
+              >
+                <Trash2 size={16} />
+                Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </section>
+    );
+  }
+
+  if (!selectedItemId && selectedProduct) {
+    return (
+      <section className="product-costs-page">
+        <div className="product-costs-home-header">
+          <div>
+            <Button
+              type="button"
+              variant="ghost"
+              className="product-cost-back"
+              onClick={() => {
+                setSelectedProductId("");
+                setSelectedItemId("");
+                setVariant("");
+              }}
+            >
+              <ArrowLeft size={16} />
+              Products
+            </Button>
+
+            <div className="product-costs-intro">
+              <p className="eyebrow">
+                {selectedProduct.name.toUpperCase()}
+              </p>
+              <h2>Choose an item</h2>
+              <p>
+                Choose the specific design or collection, then choose its variant.
+              </p>
+            </div>
+          </div>
+
+          <Button
+            type="button"
+            className="primary-button"
+            onClick={openAddItem}
+          >
+            <Plus size={17} />
+            Add item
+          </Button>
+        </div>
+
+        {productItems.length === 0 ? (
+          <div className="product-cost-empty">
+            <strong>No items yet</strong>
+            <span>
+              Add your first item under {selectedProduct.name}.
+            </span>
+            <Button
+              type="button"
+              className="primary-button"
+              onClick={openAddItem}
+            >
+              <Plus size={17} />
+              Add item
+            </Button>
+          </div>
+        ) : (
+          <div className="product-cost-grid">
+            {productItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className="product-cost-choice"
+                onClick={() => chooseItem(item)}
+              >
+                <div className="product-cost-choice-copy">
+                  <strong>{item.name}</strong>
+                  <span>{item.variants.join(" · ")}</span>
+                </div>
+
+                <div className="product-cost-choice-actions">
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Edit ${item.name}`}
+                    onClick={(event) =>
+                      openEditItem(event, item)
+                    }
+                  >
+                    <Edit3 size={15} />
+                  </span>
+
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Delete ${item.name}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setDeleteItem(item);
+                    }}
+                  >
+                    <Trash2 size={15} />
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <Dialog
+          open={itemDialogOpen}
+          onOpenChange={setItemDialogOpen}
+        >
+          <DialogContent className="product-catalog-dialog">
+            <form onSubmit={saveCatalogItem}>
+              <DialogHeader>
+                <p className="eyebrow">{selectedProduct.name}</p>
+                <DialogTitle>
+                  {editingItem ? "Edit item" : "Add item"}
+                </DialogTitle>
+                <DialogDescription>
+                  Example: Obsidian Void, Eternal. Add the variants for this item.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="product-catalog-form">
+                <label className="field">
+                  <span>Item name</span>
+                  <Input
+                    value={itemNameDraft}
+                    onChange={(event) =>
+                      setItemNameDraft(event.target.value)
+                    }
+                    placeholder="e.g. Obsidian Void"
                     required
                   />
                 </label>
@@ -621,6 +940,7 @@ export function ProductCosts() {
                 <div className="product-catalog-variants">
                   <div className="product-catalog-variants-header">
                     <span>Variants</span>
+
                     <Button
                       type="button"
                       variant="outline"
@@ -634,13 +954,16 @@ export function ProductCosts() {
 
                   {variantDrafts.map((entry, index) => (
                     <div
+                      key={index}
                       className="product-catalog-variant-row"
-                      key={`${index}-${entry}`}
                     >
                       <Input
                         value={entry}
                         onChange={(event) =>
-                          updateVariantDraft(index, event.target.value)
+                          updateVariantDraft(
+                            index,
+                            event.target.value,
+                          )
                         }
                         placeholder="e.g. Men, Women, Unisex"
                       />
@@ -664,7 +987,7 @@ export function ProductCosts() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setProductDialogOpen(false)}
+                  onClick={() => setItemDialogOpen(false)}
                 >
                   Cancel
                 </Button>
@@ -679,7 +1002,7 @@ export function ProductCosts() {
                   ) : (
                     <Save size={17} />
                   )}
-                  {editingProduct ? "Save changes" : "Add product"}
+                  Save
                 </Button>
               </DialogFooter>
             </form>
@@ -687,17 +1010,17 @@ export function ProductCosts() {
         </Dialog>
 
         <Dialog
-          open={Boolean(deleteProduct)}
+          open={Boolean(deleteItem)}
           onOpenChange={(open) => {
-            if (!open) setDeleteProduct(null);
+            if (!open) setDeleteItem(null);
           }}
         >
-          <DialogContent className="product-delete-dialog">
+          <DialogContent>
             <DialogHeader>
-              <DialogTitle>Delete product?</DialogTitle>
+              <DialogTitle>Delete item?</DialogTitle>
               <DialogDescription>
-                {deleteProduct
-                  ? `${deleteProduct.name} and all of its saved cost sheets will be permanently deleted.`
+                {deleteItem
+                  ? `${deleteItem.name} and all of its variant cost sheets will be deleted.`
                   : ""}
               </DialogDescription>
             </DialogHeader>
@@ -706,21 +1029,17 @@ export function ProductCosts() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setDeleteProduct(null)}
+                onClick={() => setDeleteItem(null)}
               >
                 Cancel
               </Button>
 
               <Button
                 type="button"
-                onClick={confirmDeleteProduct}
+                onClick={confirmDeleteItem}
                 disabled={catalogSaving}
               >
-                {catalogSaving ? (
-                  <Loader2 className="spin" size={16} />
-                ) : (
-                  <Trash2 size={16} />
-                )}
+                <Trash2 size={16} />
                 Delete
               </Button>
             </DialogFooter>
@@ -730,37 +1049,47 @@ export function ProductCosts() {
     );
   }
 
-  if (!variant && selectedProduct) {
+  if (!variant && selectedProduct && selectedItem) {
     return (
       <section className="product-costs-page">
         <Button
           type="button"
           variant="ghost"
           className="product-cost-back"
-          onClick={() => setSelectedProductId("")}
+          onClick={() => {
+            setSelectedItemId("");
+            setVariant("");
+          }}
         >
           <ArrowLeft size={16} />
-          Products
+          Items
         </Button>
 
         <div className="product-costs-intro">
-          <p className="eyebrow">{selectedProduct.name.toUpperCase()}</p>
+          <p className="eyebrow">
+            {selectedProduct.name.toUpperCase()} ·{" "}
+            {selectedItem.name.toUpperCase()}
+          </p>
           <h2>Choose a variant</h2>
           <p>
-            Each variant has its own saved product cost sheet.
+            Each variant has its own saved cost sheet.
           </p>
         </div>
 
         <div className="product-cost-gender-grid">
-          {selectedProduct.variants.map((entry) => (
+          {selectedItem.variants.map((entry) => (
             <button
               key={entry}
               type="button"
               className="product-cost-choice"
               onClick={() => setVariant(entry)}
             >
-              <strong>{entry}</strong>
-              <span>{selectedProduct.name} cost sheet</span>
+              <div className="product-cost-choice-copy">
+                <strong>{entry}</strong>
+                <span>
+                  {selectedItem.name} cost sheet
+                </span>
+              </div>
             </button>
           ))}
         </div>
@@ -768,7 +1097,7 @@ export function ProductCosts() {
     );
   }
 
-  if (!selectedProduct) {
+  if (!selectedProduct || !selectedItem) {
     return null;
   }
 
@@ -781,8 +1110,8 @@ export function ProductCosts() {
             variant="ghost"
             className="product-cost-back"
             onClick={() => {
-              if (selectedProduct.variants.length === 1) {
-                setSelectedProductId("");
+              if (selectedItem.variants.length === 1) {
+                setSelectedItemId("");
                 setVariant("");
               } else {
                 setVariant("");
@@ -795,7 +1124,7 @@ export function ProductCosts() {
 
           <p className="eyebrow">PRODUCT COST SHEET</p>
           <h2>
-            {selectedProduct.name} · {variant}
+            {selectedProduct.name} · {selectedItem.name} · {variant}
           </h2>
         </div>
 
@@ -835,13 +1164,17 @@ export function ProductCosts() {
                   </thead>
 
                   <tbody>
-                    {items.map((row) => (
+                    {costItems.map((row) => (
                       <tr key={row.id}>
                         <td>
                           <Input
                             value={row.item}
                             onChange={(event) =>
-                              updateItem(row.id, "item", event.target.value)
+                              updateCostItem(
+                                row.id,
+                                "item",
+                                event.target.value,
+                              )
                             }
                             placeholder="Item"
                           />
@@ -856,7 +1189,7 @@ export function ProductCosts() {
                               step="0.01"
                               value={row.costPerUnit}
                               onChange={(event) =>
-                                updateItem(
+                                updateCostItem(
                                   row.id,
                                   "costPerUnit",
                                   event.target.value,
@@ -870,7 +1203,11 @@ export function ProductCosts() {
                           <Input
                             value={row.note}
                             onChange={(event) =>
-                              updateItem(row.id, "note", event.target.value)
+                              updateCostItem(
+                                row.id,
+                                "note",
+                                event.target.value,
+                              )
                             }
                             placeholder="Add note"
                           />
@@ -881,8 +1218,10 @@ export function ProductCosts() {
                             type="button"
                             variant="ghost"
                             size="icon"
-                            aria-label={`Delete ${row.item || "cost item"}`}
-                            onClick={() => removeRow(row.id)}
+                            aria-label="Delete cost item"
+                            onClick={() =>
+                              removeCostRow(row.id)
+                            }
                           >
                             <Trash2 size={15} />
                           </Button>
@@ -909,7 +1248,7 @@ export function ProductCosts() {
                 type="button"
                 variant="outline"
                 className="product-cost-add-row"
-                onClick={addRow}
+                onClick={addCostRow}
               >
                 <Plus size={16} />
                 Add item
@@ -918,15 +1257,19 @@ export function ProductCosts() {
               <div className="product-cost-selling-price">
                 <label>
                   <span>Final selling price</span>
+
                   <div className="product-cost-money-field large">
                     <span className="product-cost-currency">₱</span>
+
                     <Input
                       type="number"
                       min="0"
                       step="0.01"
                       value={sellingPrice}
                       onChange={(event) =>
-                        setSellingPrice(Number(event.target.value) || 0)
+                        setSellingPrice(
+                          Number(event.target.value) || 0,
+                        )
                       }
                     />
                   </div>
@@ -950,7 +1293,9 @@ export function ProductCosts() {
                     step="0.01"
                     value={commissionRate}
                     onChange={(event) =>
-                      setCommissionRate(Number(event.target.value) || 0)
+                      setCommissionRate(
+                        Number(event.target.value) || 0,
+                      )
                     }
                   />
                   <span>% COMMISSIONS & PLATFORM FEES</span>
@@ -991,7 +1336,9 @@ export function ProductCosts() {
                     step="0.01"
                     value={taxRate}
                     onChange={(event) =>
-                      setTaxRate(Number(event.target.value) || 0)
+                      setTaxRate(
+                        Number(event.target.value) || 0,
+                      )
                     }
                   />
                   <span>% TAXES</span>
@@ -1008,7 +1355,9 @@ export function ProductCosts() {
                     step="0.01"
                     value={opexRate}
                     onChange={(event) =>
-                      setOpexRate(Number(event.target.value) || 0)
+                      setOpexRate(
+                        Number(event.target.value) || 0,
+                      )
                     }
                   />
                   <span>% OPEX</span>
@@ -1031,14 +1380,12 @@ export function ProductCosts() {
 
               <div className="product-cost-summary-row ebitda">
                 <strong>{money(totals.ebitda)}</strong>
-                <span>EBITDA · {percent(totals.ebitdaMargin)}</span>
+                <span>
+                  EBITDA · {percent(totals.ebitdaMargin)}
+                </span>
               </div>
             </div>
           </div>
-
-          <p className="product-cost-formula-note">
-            Taxes are calculated after OPEX. EBITDA is gross profit minus OPEX.
-          </p>
         </>
       )}
     </section>

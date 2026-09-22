@@ -2694,3 +2694,108 @@ table { border-top: 1px solid #262a26; } thead { background: #101210; } th { hei
   text-align: left !important;
   padding-left: 10px !important;
 }
+
+
+/* =========================================================
+   PRODUCT COSTS — PRODUCT > ITEM > VARIANT FLOW
+   ========================================================= */
+.product-costs-page .product-costs-home-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.product-costs-page .product-cost-empty {
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 28px;
+  border: 1px dashed #343a34;
+  border-radius: 14px;
+  background: #131613;
+  color: #929a91;
+  text-align: center;
+}
+
+.product-costs-page .product-cost-empty strong {
+  color: #eef2eb;
+}
+
+.product-costs-page .product-cost-choice-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+}
+
+.product-costs-page .product-cost-choice-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 5px;
+}
+
+.product-costs-page .product-cost-choice-actions > span {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #343a34;
+  border-radius: 8px;
+  background: #101310;
+  color: #a7aea6;
+  cursor: pointer;
+}
+
+.product-costs-page .product-catalog-dialog {
+  width: min(560px, calc(100vw - 24px));
+}
+
+.product-costs-page .product-catalog-form {
+  display: grid;
+  gap: 18px;
+  margin: 20px 0;
+}
+
+.product-costs-page .product-catalog-variants {
+  display: grid;
+  gap: 9px;
+}
+
+.product-costs-page .product-catalog-variants-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.product-costs-page .product-catalog-variant-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px;
+  gap: 8px;
+  align-items: center;
+}
+
+@media (max-width: 640px) {
+  .product-costs-page .product-costs-home-header {
+    align-items: center;
+  }
+
+  .product-costs-page .product-costs-home-header > .primary-button {
+    width: 40px !important;
+    min-width: 40px !important;
+    height: 40px !important;
+    padding: 0 !important;
+    font-size: 0 !important;
+  }
+
+  .product-costs-page .product-catalog-dialog input,
+  .product-costs-page .product-catalog-dialog button {
+    font-size: 16px !important;
+  }
+}

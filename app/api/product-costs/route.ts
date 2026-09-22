@@ -7,62 +7,63 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const itemSchema = z.object({
+const variantSchema = z
+  .array(z.string().trim().min(1).max(80))
+  .min(1)
+  .max(50);
+
+const itemCostSchema = z.object({
   id: z.string().min(1).max(100),
   item: z.string().max(120),
   costPerUnit: z.number().min(0).max(10000000),
   note: z.string().max(500),
 });
 
-const variantSchema = z
-  .array(z.string().trim().min(1).max(80))
-  .min(1)
-  .max(30)
-  .transform((values) => {
-    const seen = new Set<string>();
-
-    return values.filter((value) => {
-      const key = value.toLowerCase();
-
-      if (seen.has(key)) return false;
-
-      seen.add(key);
-      return true;
-    });
-  });
-
-const createProductSchema = z.object({
-  action: z.literal("createProduct"),
-  name: z.string().trim().min(1).max(120),
-  variants: variantSchema,
-});
-
-const updateProductSchema = z.object({
-  action: z.literal("updateProduct"),
-  id: z.string().uuid(),
-  name: z.string().trim().min(1).max(120),
-  variants: variantSchema,
-});
-
-const saveSheetSchema = z.object({
-  action: z.literal("saveSheet"),
-  productId: z.string().uuid(),
-  variant: z.string().trim().min(1).max(80),
-  sellingPrice: z.number().min(0).max(10000000),
-  commissionRate: z.number().min(0).max(100),
-  taxRate: z.number().min(0).max(100),
-  opexRate: z.number().min(0).max(100),
-  items: z.array(itemSchema).max(100),
-});
-
 const bodySchema = z.discriminatedUnion("action", [
-  createProductSchema,
-  updateProductSchema,
-  saveSheetSchema,
+  z.object({
+    action: z.literal("createProduct"),
+    name: z.string().trim().min(1).max(120),
+  }),
+  z.object({
+    action: z.literal("updateProduct"),
+    id: z.string().uuid(),
+    name: z.string().trim().min(1).max(120),
+  }),
+  z.object({
+    action: z.literal("createItem"),
+    productId: z.string().uuid(),
+    name: z.string().trim().min(1).max(120),
+    variants: variantSchema,
+  }),
+  z.object({
+    action: z.literal("updateItem"),
+    id: z.string().uuid(),
+    productId: z.string().uuid(),
+    name: z.string().trim().min(1).max(120),
+    variants: variantSchema,
+  }),
+  z.object({
+    action: z.literal("saveSheet"),
+    productId: z.string().uuid(),
+    itemId: z.string().uuid(),
+    variant: z.string().trim().min(1).max(80),
+    sellingPrice: z.number().min(0).max(10000000),
+    commissionRate: z.number().min(0).max(100),
+    taxRate: z.number().min(0).max(100),
+    opexRate: z.number().min(0).max(100),
+    items: z.array(itemCostSchema).max(100),
+  }),
 ]);
 
 const productSelect = `
   id,
+  name,
+  createdAt:created_at
+`;
+
+const itemSelect = `
+  id,
+  productId:product_id,
   name,
   variants,
   createdAt:created_at
@@ -71,6 +72,8 @@ const productSelect = `
 const sheetSelect = `
   productId:product_id,
   productName:product_name,
+  itemId:item_id,
+  itemName:item_name,
   variant,
   sellingPrice:selling_price,
   commissionRate:commission_rate,
@@ -79,27 +82,33 @@ const sheetSelect = `
   items
 `;
 
-async function getProduct(productId: string) {
+async function getProduct(id: string) {
   const { data, error } = await getSupabaseAdmin()
     .from("product_cost_products")
     .select(productSelect)
-    .eq("id", productId)
+    .eq("id", id)
     .maybeSingle();
 
   if (error) throw error;
-
-  return data as
-    | {
-        id: string;
-        name: string;
-        variants: string[];
-        createdAt: string;
-      }
-    | null;
+  return data;
 }
 
-function sameVariant(product: { variants: string[] }, variant: string) {
-  return product.variants.find(
+async function getItem(id: string) {
+  const { data, error } = await getSupabaseAdmin()
+    .from("product_cost_items")
+    .select(itemSelect)
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+function canonicalVariant(
+  item: { variants: string[] },
+  variant: string,
+) {
+  return item.variants.find(
     (entry) => entry.toLowerCase() === variant.toLowerCase(),
   );
 }
@@ -111,14 +120,28 @@ export async function GET(request: Request) {
     const supabase = getSupabaseAdmin();
 
     if (mode === "catalog") {
-      const { data, error } = await supabase
-        .from("product_cost_products")
-        .select(productSelect)
-        .order("created_at", { ascending: true });
+      const [
+        { data: products, error: productError },
+        { data: items, error: itemError },
+      ] = await Promise.all([
+        supabase
+          .from("product_cost_products")
+          .select(productSelect)
+          .order("created_at", { ascending: true }),
 
-      if (error) throw error;
+        supabase
+          .from("product_cost_items")
+          .select(itemSelect)
+          .order("created_at", { ascending: true }),
+      ]);
 
-      return Response.json({ products: data ?? [] });
+      if (productError) throw productError;
+      if (itemError) throw itemError;
+
+      return Response.json({
+        products: products ?? [],
+        items: items ?? [],
+      });
     }
 
     if (mode === "sheet") {
@@ -127,6 +150,11 @@ export async function GET(request: Request) {
         .uuid()
         .parse(url.searchParams.get("productId"));
 
+      const itemId = z
+        .string()
+        .uuid()
+        .parse(url.searchParams.get("itemId"));
+
       const variant = z
         .string()
         .trim()
@@ -134,20 +162,23 @@ export async function GET(request: Request) {
         .max(80)
         .parse(url.searchParams.get("variant"));
 
-      const product = await getProduct(productId);
+      const [product, item] = await Promise.all([
+        getProduct(productId),
+        getItem(itemId),
+      ]);
 
-      if (!product) {
+      if (!product || !item || item.productId !== productId) {
         return Response.json(
-          { error: "Product not found." },
+          { error: "Product item not found." },
           { status: 404 },
         );
       }
 
-      const canonicalVariant = sameVariant(product, variant);
+      const cleanVariant = canonicalVariant(item, variant);
 
-      if (!canonicalVariant) {
+      if (!cleanVariant) {
         return Response.json(
-          { error: "Variant not found for this product." },
+          { error: "Variant not found." },
           { status: 400 },
         );
       }
@@ -156,7 +187,8 @@ export async function GET(request: Request) {
         .from("product_cost_sheets")
         .select(sheetSelect)
         .eq("product_id", productId)
-        .eq("variant", canonicalVariant)
+        .eq("item_id", itemId)
+        .eq("variant", cleanVariant)
         .maybeSingle();
 
       if (error) throw error;
@@ -165,7 +197,7 @@ export async function GET(request: Request) {
     }
 
     return Response.json(
-      { error: "Invalid product costs request." },
+      { error: "Invalid request." },
       { status: 400 },
     );
   } catch (error) {
@@ -176,7 +208,7 @@ export async function GET(request: Request) {
       );
     }
 
-    console.error("Failed to load product costs", error);
+    console.error("Product costs GET failed", error);
 
     return Response.json(
       { error: friendlySupabaseError(error) },
@@ -192,49 +224,31 @@ export async function POST(request: Request) {
     const now = new Date().toISOString();
 
     if (value.action === "createProduct") {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("product_cost_products")
         .insert({
           name: value.name,
-          variants: value.variants,
           created_at: now,
           updated_at: now,
-        })
-        .select(productSelect)
-        .single();
+        });
 
       if (error) throw error;
 
-      return Response.json({ product: data }, { status: 201 });
+      return Response.json({ ok: true }, { status: 201 });
     }
 
     if (value.action === "updateProduct") {
-      const previous = await getProduct(value.id);
-
-      if (!previous) {
-        return Response.json(
-          { error: "Product not found." },
-          { status: 404 },
-        );
-      }
-
-      const previousVariants = previous.variants ?? [];
-
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("product_cost_products")
         .update({
           name: value.name,
-          variants: value.variants,
           updated_at: now,
         })
-        .eq("id", value.id)
-        .select(productSelect)
-        .single();
+        .eq("id", value.id);
 
       if (error) throw error;
 
-      // Keep product name synchronized in all existing sheets.
-      const { error: renameSheetError } = await supabase
+      const { error: sheetError } = await supabase
         .from("product_cost_sheets")
         .update({
           product_name: value.name,
@@ -242,44 +256,105 @@ export async function POST(request: Request) {
         })
         .eq("product_id", value.id);
 
-      if (renameSheetError) throw renameSheetError;
+      if (sheetError) throw sheetError;
 
-      // Delete sheets for variants that were removed from the product.
-      const removedVariants = previousVariants.filter(
-        (oldVariant) =>
+      return Response.json({ ok: true });
+    }
+
+    if (value.action === "createItem") {
+      const product = await getProduct(value.productId);
+
+      if (!product) {
+        return Response.json(
+          { error: "Product not found." },
+          { status: 404 },
+        );
+      }
+
+      const { error } = await supabase
+        .from("product_cost_items")
+        .insert({
+          product_id: value.productId,
+          name: value.name,
+          variants: value.variants,
+          created_at: now,
+          updated_at: now,
+        });
+
+      if (error) throw error;
+
+      return Response.json({ ok: true }, { status: 201 });
+    }
+
+    if (value.action === "updateItem") {
+      const previous = await getItem(value.id);
+
+      if (!previous || previous.productId !== value.productId) {
+        return Response.json(
+          { error: "Item not found." },
+          { status: 404 },
+        );
+      }
+
+      const { error } = await supabase
+        .from("product_cost_items")
+        .update({
+          name: value.name,
+          variants: value.variants,
+          updated_at: now,
+        })
+        .eq("id", value.id);
+
+      if (error) throw error;
+
+      const { error: renameError } = await supabase
+        .from("product_cost_sheets")
+        .update({
+          item_name: value.name,
+          updated_at: now,
+        })
+        .eq("item_id", value.id);
+
+      if (renameError) throw renameError;
+
+      const removedVariants = previous.variants.filter(
+        (oldVariant: string) =>
           !value.variants.some(
-            (newVariant) =>
-              newVariant.toLowerCase() === oldVariant.toLowerCase(),
+            (nextVariant) =>
+              nextVariant.toLowerCase() === oldVariant.toLowerCase(),
           ),
       );
 
       if (removedVariants.length) {
-        const { error: removedSheetError } = await supabase
+        const { error: removeError } = await supabase
           .from("product_cost_sheets")
           .delete()
-          .eq("product_id", value.id)
+          .eq("item_id", value.id)
           .in("variant", removedVariants);
 
-        if (removedSheetError) throw removedSheetError;
+        if (removeError) throw removeError;
       }
 
-      return Response.json({ product: data });
+      return Response.json({ ok: true });
     }
 
-    const product = await getProduct(value.productId);
+    const [product, item] = await Promise.all([
+      getProduct(value.productId),
+      getItem(value.itemId),
+    ]);
 
-    if (!product) {
+    if (!product || !item || item.productId !== product.id) {
       return Response.json(
-        { error: "Product not found." },
+        { error: "Product item not found." },
         { status: 404 },
       );
     }
 
-    const canonicalVariant = sameVariant(product, value.variant);
+    const cleanVariant = canonicalVariant(item, value.variant);
 
-    if (!canonicalVariant) {
+    if (!cleanVariant) {
       return Response.json(
-        { error: "Variant not found for this product." },
+        { error: "Variant not found." },
         { status: 400 },
       );
     }
@@ -290,7 +365,9 @@ export async function POST(request: Request) {
         {
           product_id: product.id,
           product_name: product.name,
-          variant: canonicalVariant,
+          item_id: item.id,
+          item_name: item.name,
+          variant: cleanVariant,
           selling_price: value.sellingPrice,
           commission_rate: value.commissionRate,
           tax_rate: value.taxRate,
@@ -299,7 +376,7 @@ export async function POST(request: Request) {
           updated_at: now,
         },
         {
-          onConflict: "product_id,variant",
+          onConflict: "item_id,variant",
         },
       );
 
@@ -309,12 +386,12 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof z.ZodError) {
       return Response.json(
-        { error: "Check the product cost fields and try again." },
+        { error: "Check the product cost fields." },
         { status: 400 },
       );
     }
 
-    console.error("Failed to save product costs", error);
+    console.error("Product costs POST failed", error);
 
     return Response.json(
       { error: friendlySupabaseError(error) },
@@ -327,33 +404,44 @@ export async function DELETE(request: Request) {
   try {
     const url = new URL(request.url);
     const mode = url.searchParams.get("mode");
+    const id = z.string().uuid().parse(url.searchParams.get("id"));
+    const supabase = getSupabaseAdmin();
 
-    if (mode !== "product") {
-      return Response.json(
-        { error: "Invalid delete request." },
-        { status: 400 },
-      );
+    if (mode === "product") {
+      const { error } = await supabase
+        .from("product_cost_products")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+
+      return Response.json({ ok: true });
     }
 
-    const id = z.string().uuid().parse(url.searchParams.get("id"));
+    if (mode === "item") {
+      const { error } = await supabase
+        .from("product_cost_items")
+        .delete()
+        .eq("id", id);
 
-    const { error } = await getSupabaseAdmin()
-      .from("product_cost_products")
-      .delete()
-      .eq("id", id);
+      if (error) throw error;
 
-    if (error) throw error;
+      return Response.json({ ok: true });
+    }
 
-    return Response.json({ ok: true });
+    return Response.json(
+      { error: "Invalid delete request." },
+      { status: 400 },
+    );
   } catch (error) {
     if (error instanceof z.ZodError) {
       return Response.json(
-        { error: "Invalid product." },
+        { error: "Invalid record." },
         { status: 400 },
       );
     }
 
-    console.error("Failed to delete product", error);
+    console.error("Product costs DELETE failed", error);
 
     return Response.json(
       { error: friendlySupabaseError(error) },
