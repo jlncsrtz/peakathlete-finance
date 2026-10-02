@@ -357,13 +357,17 @@ function SalesView({ orders, summary, search, setSearch, status, setStatus, add,
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Date / Order</TableHead>
+                <TableHead>Date / Order ID</TableHead>
                 <TableHead>Customer / Channel</TableHead>
                 <TableHead>Items</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Notes</TableHead>
                 <TableHead>Payment</TableHead>
-                <TableHead className="amount-column">Total</TableHead>
+                <TableHead className="amount-column">Total Price Paid</TableHead>
+                <TableHead className="amount-column">Actual Shipping</TableHead>
+                <TableHead className="amount-column">Confirm & Complete</TableHead>
+                <TableHead className="amount-column">Enstack Voucher</TableHead>
+                <TableHead className="amount-column">Total Sales</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -445,8 +449,23 @@ function SalesView({ orders, summary, search, setSearch, status, setStatus, add,
                     </TableCell>
 
                     <TableCell className="amount-column">
+                      <strong>{money(order.amountPaidCents)}</strong>
+                    </TableCell>
+
+                    <TableCell className="amount-column">
+                      <strong>{money(order.shippingFeeCents)}</strong>
+                    </TableCell>
+
+                    <TableCell className="amount-column">
+                      <strong>{money(order.transactionFeeCents)}</strong>
+                    </TableCell>
+
+                    <TableCell className="amount-column">
+                      <strong>{money(order.discountCents)}</strong>
+                    </TableCell>
+
+                    <TableCell className="amount-column">
                       <strong>{money(order.totalCents)}</strong>
-                      <small>{money(order.amountPaidCents)} paid</small>
                     </TableCell>
 
                     <TableCell>
@@ -980,7 +999,7 @@ function CashFlowView({ summary, orders, expenses }: { summary: FinanceSummary; 
 }
 
 function ReportsView({ summary, orders, products, productSales, expenseCategories, from, to, setFrom, setTo, refresh, refreshing }: { summary: FinanceSummary; orders: Sale[]; products: Product[]; productSales: { name: string; quantity: number; sales: number }[]; expenseCategories: [string, number][]; from: string; to: string; setFrom: (value: string) => void; setTo: (value: string) => void; refresh: () => void; refreshing: boolean }) {
-  const exportSales = () => downloadCsv("peakathlete-sales.csv", [["Order Date", "Order ID", "Source", "Customer", "Channel", "Items", "Status", "Notes", "Payment Status", "Payment Method", "Subtotal", "Discount", "Shipping", "Transaction Fee", "Total", "Net Sales", "Amount Paid"], ...orders.map((order) => [order.orderDate, order.orderNumber, order.source, order.customerName, order.salesChannel, order.itemsSummary, order.orderStatus, order.notes, order.paymentStatus, order.paymentMethod, order.subtotalCents / 100, order.discountCents / 100, order.shippingFeeCents / 100, order.transactionFeeCents / 100, order.totalCents / 100, order.netSalesCents / 100, order.amountPaidCents / 100])]);
+  const exportSales = () => downloadCsv("peakathlete-sales.csv", [["Order Date", "Order ID", "Source", "Customer", "Channel", "Items", "Status", "Notes", "Payment Status", "Payment Method", "Product Subtotal", "Enstack Voucher", "Actual Shipping Fee", "Confirm & Complete Fee", "Total Sales", "Net Sales", "Total Price Paid by Buyer"], ...orders.map((order) => [order.orderDate, order.orderNumber, order.source, order.customerName, order.salesChannel, order.itemsSummary, order.orderStatus, order.notes, order.paymentStatus, order.paymentMethod, order.subtotalCents / 100, order.discountCents / 100, order.shippingFeeCents / 100, order.transactionFeeCents / 100, order.totalCents / 100, order.netSalesCents / 100, order.amountPaidCents / 100])]);
   const exportProducts = () => downloadCsv("peakathlete-products.csv", [["Product", "SKU", "Variant", "Cost", "Selling Price", "Stock", "Low Stock Threshold"], ...products.map((product) => [product.name, product.sku, product.variant, product.costCents / 100, product.sellingPriceCents / 100, product.stockQuantity, product.lowStockThreshold])]);
   const exportProfit = () => downloadCsv("peakathlete-profit-summary.csv", [["From", "To", "Net Sales", "COGS", "Gross Profit", "Expenses", "Net Profit", "Cash In", "Cash Out", "Receivables"], [from, to, summary.netSales / 100, summary.cogs / 100, summary.grossProfit / 100, summary.expenses / 100, summary.netProfit / 100, summary.paid / 100, summary.expensePaid / 100, summary.receivables / 100]]);
 
@@ -1060,11 +1079,249 @@ function ReportsView({ summary, orders, products, productSales, expenseCategorie
 }
 
 function SaleDialog({ open, setOpen, draft, setDraft, products, editing, saving, submit }: { open: boolean; setOpen: (open: boolean) => void; draft: SaleDraft; setDraft: (draft: SaleDraft) => void; products: Product[]; editing: boolean; saving: boolean; submit: (event: FormEvent) => void }) {
-  const subtotal = draft.items.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.unitPrice || 0), 0);
-  const total = Math.max(subtotal - Number(draft.discount || 0) + Number(draft.shippingFee || 0), 0);
-  const update = (key: keyof Omit<SaleDraft, "items">) => (value: string) => setDraft({ ...draft, [key]: value });
-  const updateLine = (index: number, patch: Partial<SaleLineDraft>) => setDraft({ ...draft, items: draft.items.map((item, position) => position === index ? { ...item, ...patch } : item) });
-  return <Dialog open={open} onOpenChange={setOpen}><DialogContent className="expense-dialog sale-dialog"><form onSubmit={submit}><DialogHeader><p className="eyebrow">{editing ? "EDIT SALE" : "NEW SALE"}</p><DialogTitle>{editing ? "Update order" : "Add a sale"}</DialogTitle><DialogDescription>Record products, payment, fulfillment, and order costs.</DialogDescription></DialogHeader><div className="form-grid"><Field label="Order date"><Text value={draft.orderDate} onChange={update("orderDate")} type="date" required /></Field><Field label="Order ID"><Text value={draft.orderNumber} onChange={update("orderNumber")} placeholder="Generated automatically" disabled={!editing} /></Field><Field label="Customer name"><Text value={draft.customerName} onChange={update("customerName")} placeholder="Optional" /></Field><Field label="Sales channel"><Choice value={draft.salesChannel} onChange={update("salesChannel")} options={channels} /></Field><Field label="Order status"><Choice value={draft.orderStatus} onChange={update("orderStatus")} options={orderStatuses} /></Field><Field label="Payment status"><Choice value={draft.paymentStatus} onChange={update("paymentStatus")} options={paymentStatuses} /></Field><Field label="Payment method"><Choice value={draft.paymentMethod} onChange={update("paymentMethod")} options={paymentMethods} /></Field><Field label="Shipping method"><Text value={draft.shippingMethod} onChange={update("shippingMethod")} placeholder="Optional" /></Field><div className="full sale-items"><div className="line-heading"><span>Products</span><Button type="button" variant="outline" size="sm" onClick={() => setDraft({ ...draft, items: [...draft.items, { productId: "", quantity: "1", unitPrice: "" }] })}><Plus size={14} /> Add item</Button></div>{draft.items.map((item, index) => <div className="sale-line" key={index}><Choice value={item.productId} onChange={(productId) => { const product = products.find((entry) => entry.id === productId); updateLine(index, { productId, unitPrice: product ? String(product.sellingPriceCents / 100) : "" }); }} options={products.map((product) => product.id)} labels={Object.fromEntries(products.map((product) => [product.id, `${product.name}${product.variant ? ` · ${product.variant}` : ""} (${product.stockQuantity} stock)`]))} placeholder="Select product" /><Text value={item.quantity} onChange={(quantity) => updateLine(index, { quantity })} type="number" min="1" step="1" aria-label="Quantity" /><Money value={item.unitPrice} onChange={(unitPrice) => updateLine(index, { unitPrice })} /><Button type="button" variant="ghost" size="icon" disabled={draft.items.length === 1} onClick={() => setDraft({ ...draft, items: draft.items.filter((_, position) => position !== index) })}><Trash2 size={15} /></Button></div>)}</div><Field label="Discount"><Money value={draft.discount} onChange={update("discount")} /></Field><Field label="Shipping fee"><Money value={draft.shippingFee} onChange={update("shippingFee")} /></Field><Field label="Transaction fee"><Money value={draft.transactionFee} onChange={update("transactionFee")} /></Field>{draft.paymentStatus === "Partial" ? <Field label="Amount paid"><Money value={draft.amountPaid} onChange={update("amountPaid")} /></Field> : <Field label="Calculated total"><div className="calculated-total">{peso.format(total)}</div></Field>}<Field label="Notes" full><Text value={draft.notes} onChange={update("notes")} placeholder="Optional order notes" /></Field></div><DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" className="primary-button" disabled={saving || !products.length}>{saving && <Loader2 className="spin" size={16} />}{editing ? "Save changes" : "Add sale"}</Button></DialogFooter></form></DialogContent></Dialog>;
+  const totalSales = Math.max(
+    Number(draft.amountPaid || 0) +
+      Number(draft.shippingFee || 0) +
+      Number(draft.transactionFee || 0) -
+      Number(draft.discount || 0),
+    0,
+  );
+
+  const update = (key: keyof Omit<SaleDraft, "items">) => (value: string) =>
+    setDraft({ ...draft, [key]: value });
+
+  const updateLine = (index: number, patch: Partial<SaleLineDraft>) =>
+    setDraft({
+      ...draft,
+      items: draft.items.map((item, position) =>
+        position === index ? { ...item, ...patch } : item,
+      ),
+    });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent className="expense-dialog sale-dialog">
+        <form onSubmit={submit}>
+          <DialogHeader>
+            <p className="eyebrow">{editing ? "EDIT SALE" : "NEW SALE"}</p>
+            <DialogTitle>{editing ? "Update order" : "Add a sale"}</DialogTitle>
+            <DialogDescription>
+              Record the Enstack order ID, products, buyer payment, fees, voucher, and total sales.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="form-grid">
+            <Field label="Order date">
+              <Text
+                value={draft.orderDate}
+                onChange={update("orderDate")}
+                type="date"
+                required
+              />
+            </Field>
+
+            <Field label="Order ID">
+              <Text
+                value={draft.orderNumber}
+                onChange={update("orderNumber")}
+                placeholder="Enter Enstack order ID"
+              />
+            </Field>
+
+            <Field label="Customer name">
+              <Text
+                value={draft.customerName}
+                onChange={update("customerName")}
+                placeholder="Optional"
+              />
+            </Field>
+
+            <Field label="Sales channel">
+              <Choice
+                value={draft.salesChannel}
+                onChange={update("salesChannel")}
+                options={channels}
+              />
+            </Field>
+
+            <Field label="Order status">
+              <Choice
+                value={draft.orderStatus}
+                onChange={update("orderStatus")}
+                options={orderStatuses}
+              />
+            </Field>
+
+            <Field label="Payment status">
+              <Choice
+                value={draft.paymentStatus}
+                onChange={update("paymentStatus")}
+                options={paymentStatuses}
+              />
+            </Field>
+
+            <Field label="Payment method">
+              <Choice
+                value={draft.paymentMethod}
+                onChange={update("paymentMethod")}
+                options={paymentMethods}
+              />
+            </Field>
+
+            <Field label="Shipping method">
+              <Text
+                value={draft.shippingMethod}
+                onChange={update("shippingMethod")}
+                placeholder="Optional"
+              />
+            </Field>
+
+            <div className="full sale-items">
+              <div className="line-heading">
+                <span>Products</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setDraft({
+                      ...draft,
+                      items: [
+                        ...draft.items,
+                        { productId: "", quantity: "1", unitPrice: "" },
+                      ],
+                    })
+                  }
+                >
+                  <Plus size={14} /> Add item
+                </Button>
+              </div>
+
+              {draft.items.map((item, index) => (
+                <div className="sale-line" key={index}>
+                  <Choice
+                    value={item.productId}
+                    onChange={(productId) => {
+                      const product = products.find(
+                        (entry) => entry.id === productId,
+                      );
+                      updateLine(index, {
+                        productId,
+                        unitPrice: product
+                          ? String(product.sellingPriceCents / 100)
+                          : "",
+                      });
+                    }}
+                    options={products.map((product) => product.id)}
+                    labels={Object.fromEntries(
+                      products.map((product) => [
+                        product.id,
+                        `${product.name}${product.variant ? ` · ${product.variant}` : ""} (${product.stockQuantity} stock)`,
+                      ]),
+                    )}
+                    placeholder="Select product"
+                  />
+                  <Text
+                    value={item.quantity}
+                    onChange={(quantity) => updateLine(index, { quantity })}
+                    type="number"
+                    min="1"
+                    step="1"
+                    aria-label="Quantity"
+                  />
+                  <Money
+                    value={item.unitPrice}
+                    onChange={(unitPrice) => updateLine(index, { unitPrice })}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    disabled={draft.items.length === 1}
+                    onClick={() =>
+                      setDraft({
+                        ...draft,
+                        items: draft.items.filter(
+                          (_, position) => position !== index,
+                        ),
+                      })
+                    }
+                  >
+                    <Trash2 size={15} />
+                  </Button>
+                </div>
+              ))}
+            </div>
+
+            <Field label="Total Price Paid by Buyer">
+              <Money
+                value={draft.amountPaid}
+                onChange={update("amountPaid")}
+                required
+              />
+            </Field>
+
+            <Field label="Actual Shipping Fee">
+              <Money
+                value={draft.shippingFee}
+                onChange={update("shippingFee")}
+              />
+            </Field>
+
+            <Field label="Confirm & Complete Fee">
+              <Money
+                value={draft.transactionFee}
+                onChange={update("transactionFee")}
+              />
+            </Field>
+
+            <Field label="Enstack Voucher">
+              <Money
+                value={draft.discount}
+                onChange={update("discount")}
+              />
+            </Field>
+
+            <Field label="Total Sales" full>
+              <div className="calculated-total">{peso.format(totalSales)}</div>
+            </Field>
+
+            <div className="full">
+              <small className="dialog-note">
+                Total Sales = Total Price Paid by Buyer + Actual Shipping Fee + Confirm & Complete Fee − Enstack Voucher.
+              </small>
+            </div>
+
+            <Field label="Notes" full>
+              <Text
+                value={draft.notes}
+                onChange={update("notes")}
+                placeholder="Optional order notes"
+              />
+            </Field>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              className="primary-button"
+              disabled={saving || !products.length}
+            >
+              {saving && <Loader2 className="spin" size={16} />}
+              {editing ? "Save changes" : "Add sale"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function ProductDialog({ open, setOpen, draft, setDraft, editing, saving, submit }: { open: boolean; setOpen: (open: boolean) => void; draft: ProductDraft; setDraft: (draft: ProductDraft) => void; editing: boolean; saving: boolean; submit: (event: FormEvent) => void }) {

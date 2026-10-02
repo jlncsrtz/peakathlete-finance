@@ -33,7 +33,7 @@ export function getSupabaseAdmin(): SupabaseClient {
 
   if (!secretKey) {
     throw new SupabaseSetupError(
-      "Supabase server secret is missing. Add SUPABASE_SECRET_KEY with your sb_secret_... key."
+      "Supabase server secret is missing. Add SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY to your environment variables."
     );
   }
 
@@ -56,24 +56,30 @@ export function isUniqueViolation(error: unknown) {
   );
 }
 
+type SupabaseErrorLike = {
+  code?: string;
+  message?: string;
+  details?: string;
+  hint?: string;
+  status?: number;
+  statusCode?: number;
+};
+
 export function friendlySupabaseError(error: unknown) {
   if (error instanceof SupabaseSetupError) {
     return error.message;
   }
 
-  const value =
+  const value: SupabaseErrorLike =
     error && typeof error === "object"
-      ? (error as {
-          code?: string;
-          message?: string;
-          details?: string;
-          hint?: string;
-          status?: number;
-        })
+      ? (error as SupabaseErrorLike)
       : {};
 
-  const message = String(value.message ?? "");
-  const code = String(value.code ?? "");
+  const message = String(value.message ?? "").trim();
+  const details = String(value.details ?? "").trim();
+  const hint = String(value.hint ?? "").trim();
+  const code = String(value.code ?? "").trim();
+  const status = Number(value.status ?? value.statusCode ?? 0);
 
   if (
     code === "42P01" ||
@@ -88,23 +94,46 @@ export function friendlySupabaseError(error: unknown) {
     code === "42501" ||
     /permission denied/i.test(message)
   ) {
-    return "Supabase denied database access. Use the server Secret key (sb_secret_...) for SUPABASE_SECRET_KEY.";
+    return "Supabase denied database access. Check that your server environment uses SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY.";
   }
 
   if (
-    value.status === 401 ||
+    status === 401 ||
     /invalid.*api.*key/i.test(message) ||
     /unauthorized/i.test(message)
   ) {
-    return "The Supabase URL/key pair is invalid. Copy the Project URL and Secret key from the same Supabase project.";
+    return "The Supabase URL/key pair is invalid. Copy the Project URL and server secret from the same Supabase project.";
   }
 
   if (
     /fetch failed/i.test(message) ||
-    /ENOTFOUND/i.test(message)
+    /ENOTFOUND/i.test(message) ||
+    /ECONNREFUSED/i.test(message) ||
+    /ETIMEDOUT/i.test(message) ||
+    /network/i.test(message)
   ) {
-    return "The app could not reach Supabase. Check SUPABASE_URL and your internet connection.";
+    return "The app could not reach Supabase. Check SUPABASE_URL, the server key, and your network connection.";
   }
 
-  return "Supabase could not load the database. Check /api/health for the exact setup status.";
+  const parts: string[] = [];
+
+  if (message) parts.push(message);
+
+  if (details && details !== message) {
+    parts.push(details);
+  }
+
+  if (hint) {
+    parts.push(`Hint: ${hint}`);
+  }
+
+  if (code) {
+    parts.push(`Code: ${code}`);
+  }
+
+  if (parts.length > 0) {
+    return `Supabase request failed: ${parts.join(" | ")}`;
+  }
+
+  return "A Supabase request failed, but no error details were returned. Check the failed API request in the browser Network tab and the Vercel Function logs.";
 }
