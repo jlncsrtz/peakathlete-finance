@@ -13,19 +13,19 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 export type FinanceView = "sales" | "products" | "profit" | "cashflow" | "reports";
 type Product = { id: string; name: string; sku: string; variant: string; costCents: number; sellingPriceCents: number; stockQuantity: number; lowStockThreshold: number };
 type SaleItem = { id: string; orderId: string; productId: string | null; productName: string; sku: string; variant: string; quantity: number; unitPriceCents: number; unitCostCents: number; lineTotalCents: number };
-type Sale = { id: string; orderDate: string; orderNumber: string; externalOrderId: string | null; source: string; customerName: string; salesChannel: string; orderStatus: string; paymentStatus: string; paymentMethod: string; shippingMethod: string; itemsSummary: string; subtotalCents: number; discountCents: number; shippingFeeCents: number; transactionFeeCents: number; totalCents: number; netSalesCents: number; amountPaidCents: number; inventoryApplied: number; notes: string; paidAt: string; deliveredAt: string; items: SaleItem[] };
+type Sale = { id: string; orderDate: string; orderNumber: string; externalOrderId: string | null; source: string; customerName: string; salesChannel: string; orderStatus: string; paymentStatus: string; paymentMethod: string; shippingMethod: string; itemsSummary: string; subtotalCents: number; discountCents: number; voucherDiscountCents: number; cashierDiscountCents: number; shippingFeeCents: number; actualShippingFeeCents: number; transactionFeeCents: number; enstackVoucherCents: number; totalCents: number; netSalesCents: number; amountPaidCents: number; inventoryApplied: number; notes: string; paidAt: string; deliveredAt: string; items: SaleItem[] };
 type ExpenseMini = { category: string; totalCents: number; amountPaidCents: number };
 type Movement = { id: string; productId: string; productName: string; sku: string; orderId: string | null; movementType: string; quantityDelta: number; reason: string; createdAt: string };
 type FinanceResponse = { orders: Omit<Sale, "items">[]; items: SaleItem[]; products: Product[]; expenses: ExpenseMini[]; movements: Movement[] };
 type SaleLineDraft = { productId: string; quantity: string; unitPrice: string };
-type SaleDraft = { orderDate: string; orderNumber: string; customerName: string; salesChannel: string; orderStatus: string; paymentStatus: string; paymentMethod: string; shippingMethod: string; discount: string; shippingFee: string; transactionFee: string; amountPaid: string; notes: string; items: SaleLineDraft[] };
+type SaleDraft = { orderDate: string; orderNumber: string; customerName: string; salesChannel: string; orderStatus: string; paymentStatus: string; paymentMethod: string; shippingMethod: string; shippingFee: string; voucherDiscount: string; cashierDiscount: string; actualShippingFee: string; transactionFee: string; enstackVoucher: string; amountPaid: string; notes: string; items: SaleLineDraft[] };
 type ProductDraft = { name: string; sku: string; variant: string; cost: string; sellingPrice: string; stockQuantity: string; lowStockThreshold: string };
 type FinanceSummary = { grossSales: number; netSales: number; paid: number; receivables: number; cogs: number; expenses: number; expensePaid: number; grossProfit: number; netProfit: number; cashBalance: number };
 
 const peso = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 2 });
 const orderStatuses = ["Pending", "Processing", "Shipped", "Completed", "Cancelled"];
 const paymentStatuses = ["Unpaid", "Partial", "Paid"];
-const channels = ["Direct", "Website", "Enstack", "Facebook", "Instagram", "TikTok", "Shopee", "Physical Store", "Other"];
+const channels = ["Enstack", "TikTok"];
 const paymentMethods = ["Cash", "GCash", "Maya", "Bank Transfer", "Credit Card", "Debit Card", "COD", "Other"];
 const today = () => new Date().toISOString().slice(0, 10);
 const money = (value: number) => peso.format(value / 100);
@@ -41,7 +41,7 @@ const monthEnd = (month: string) => {
   if (!match) return today();
   return new Date(Date.UTC(Number(match[1]), Number(match[2]), 0)).toISOString().slice(0, 10);
 };
-const blankSale = (): SaleDraft => ({ orderDate: today(), orderNumber: "", customerName: "", salesChannel: "Direct", orderStatus: "Pending", paymentStatus: "Unpaid", paymentMethod: "GCash", shippingMethod: "", discount: "0", shippingFee: "0", transactionFee: "0", amountPaid: "0", notes: "", items: [{ productId: "", quantity: "1", unitPrice: "" }] });
+const blankSale = (): SaleDraft => ({ orderDate: today(), orderNumber: "", customerName: "", salesChannel: "Enstack", orderStatus: "Completed", paymentStatus: "Paid", paymentMethod: "GCash", shippingMethod: "", shippingFee: "", voucherDiscount: "", cashierDiscount: "", actualShippingFee: "", transactionFee: "", enstackVoucher: "", amountPaid: "", notes: "", items: [{ productId: "", quantity: "1", unitPrice: "" }] });
 const blankProduct = (): ProductDraft => ({ name: "", sku: "", variant: "", cost: "", sellingPrice: "", stockQuantity: "0", lowStockThreshold: "5" });
 
 export function FinanceSuite({
@@ -151,9 +151,10 @@ export function FinanceSuite({
   const expenseCategories = useMemo(() => Object.entries(data.expenses.reduce<Record<string, number>>((all, expense) => ({ ...all, [expense.category]: (all[expense.category] ?? 0) + expense.totalCents }), {})).sort((a, b) => b[1] - a[1]), [data.expenses]);
 
   const openNewSale = () => { setEditingSale(null); setSaleDraft(blankSale()); setSaleDialog(true); };
+  const draftMoney = (cents: number) => cents === 0 ? "" : String(cents / 100);
   const openSale = (order: Sale) => {
     setEditingSale(order.id);
-    setSaleDraft({ orderDate: order.orderDate, orderNumber: order.orderNumber, customerName: order.customerName, salesChannel: order.salesChannel, orderStatus: order.orderStatus, paymentStatus: order.paymentStatus, paymentMethod: order.paymentMethod, shippingMethod: order.shippingMethod, discount: String(order.discountCents / 100), shippingFee: String(order.shippingFeeCents / 100), transactionFee: String(order.transactionFeeCents / 100), amountPaid: String(order.amountPaidCents / 100), notes: order.notes, items: order.items.filter((item) => item.productId).map((item) => ({ productId: item.productId!, quantity: String(item.quantity), unitPrice: String(item.unitPriceCents / 100) })) });
+    setSaleDraft({ orderDate: order.orderDate, orderNumber: order.orderNumber, customerName: order.customerName, salesChannel: order.salesChannel, orderStatus: order.orderStatus, paymentStatus: order.paymentStatus, paymentMethod: order.paymentMethod, shippingMethod: order.shippingMethod, shippingFee: draftMoney(order.shippingFeeCents), voucherDiscount: draftMoney(order.voucherDiscountCents), cashierDiscount: draftMoney(order.cashierDiscountCents), actualShippingFee: draftMoney(order.actualShippingFeeCents), transactionFee: draftMoney(order.transactionFeeCents), enstackVoucher: draftMoney(order.enstackVoucherCents), amountPaid: draftMoney(order.amountPaidCents), notes: order.notes, items: order.items.filter((item) => item.productId).map((item) => ({ productId: item.productId!, quantity: String(item.quantity), unitPrice: String(item.unitPriceCents / 100) })) });
     setSaleDialog(true);
   };
   const openNewProduct = () => { setEditingProduct(null); setProductDraft(blankProduct()); setProductDialog(true); };
@@ -363,11 +364,11 @@ function SalesView({ orders, summary, search, setSearch, status, setStatus, add,
                 <TableHead>Status</TableHead>
                 <TableHead>Notes</TableHead>
                 <TableHead>Payment</TableHead>
-                <TableHead className="amount-column">Total Price Paid</TableHead>
-                <TableHead className="amount-column">Actual Shipping</TableHead>
-                <TableHead className="amount-column">Confirm & Complete</TableHead>
+                <TableHead className="amount-column">Total Price Paid by Buyer</TableHead>
+                <TableHead className="amount-column">Actual Shipping Fee</TableHead>
+                <TableHead className="amount-column">Confirm & Complete Fee</TableHead>
                 <TableHead className="amount-column">Enstack Voucher</TableHead>
-                <TableHead className="amount-column">Total Sales</TableHead>
+                <TableHead className="amount-column">Total Sale</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -449,23 +450,23 @@ function SalesView({ orders, summary, search, setSearch, status, setStatus, add,
                     </TableCell>
 
                     <TableCell className="amount-column">
-                      <strong>{money(order.amountPaidCents)}</strong>
-                    </TableCell>
-
-                    <TableCell className="amount-column">
-                      <strong>{money(order.shippingFeeCents)}</strong>
-                    </TableCell>
-
-                    <TableCell className="amount-column">
-                      <strong>{money(order.transactionFeeCents)}</strong>
-                    </TableCell>
-
-                    <TableCell className="amount-column">
-                      <strong>{money(order.discountCents)}</strong>
-                    </TableCell>
-
-                    <TableCell className="amount-column">
                       <strong>{money(order.totalCents)}</strong>
+                    </TableCell>
+
+                    <TableCell className="amount-column">
+                      <strong>− {money(order.actualShippingFeeCents)}</strong>
+                    </TableCell>
+
+                    <TableCell className="amount-column">
+                      <strong>− {money(order.transactionFeeCents)}</strong>
+                    </TableCell>
+
+                    <TableCell className="amount-column">
+                      <strong>+ {money(order.enstackVoucherCents)}</strong>
+                    </TableCell>
+
+                    <TableCell className="amount-column">
+                      <strong>{money(order.netSalesCents)}</strong>
                     </TableCell>
 
                     <TableCell>
@@ -537,7 +538,7 @@ function SalesView({ orders, summary, search, setSearch, status, setStatus, add,
             {noteOrder?.notes?.trim() || "No note was added to this order."}
           </div>
 
-          <DialogFooter>
+          <DialogFooter style={{ flexShrink: 0, paddingTop: 12 }}>
             <Button
               type="button"
               className="primary-button"
@@ -999,9 +1000,7 @@ function CashFlowView({ summary, orders, expenses }: { summary: FinanceSummary; 
 }
 
 function ReportsView({ summary, orders, products, productSales, expenseCategories, from, to, setFrom, setTo, refresh, refreshing }: { summary: FinanceSummary; orders: Sale[]; products: Product[]; productSales: { name: string; quantity: number; sales: number }[]; expenseCategories: [string, number][]; from: string; to: string; setFrom: (value: string) => void; setTo: (value: string) => void; refresh: () => void; refreshing: boolean }) {
-  const exportSales = () => downloadCsv("peakathlete-sales.csv", [["Order Date", "Order ID", "Source", "Customer", "Channel", "Items", "Status", "Notes", "Payment Status", "Payment Method", "Product Subtotal", "Enstack Voucher", "Actual Shipping Fee", "Confirm & Complete Fee", "Total Sales", "Net Sales", "Total Price Paid by Buyer"], ...orders.map((order) => [order.orderDate, order.orderNumber, order.source, order.customerName, order.salesChannel, order.itemsSummary, order.orderStatus, order.notes, order.paymentStatus, order.paymentMethod, order.subtotalCents / 100, order.discountCents / 100, order.shippingFeeCents / 100, order.transactionFeeCents / 100, order.totalCents / 100, order.netSalesCents / 100, order.amountPaidCents / 100])]);
-  const exportProducts = () => downloadCsv("peakathlete-products.csv", [["Product", "SKU", "Variant", "Cost", "Selling Price", "Stock", "Low Stock Threshold"], ...products.map((product) => [product.name, product.sku, product.variant, product.costCents / 100, product.sellingPriceCents / 100, product.stockQuantity, product.lowStockThreshold])]);
-  const exportProfit = () => downloadCsv("peakathlete-profit-summary.csv", [["From", "To", "Net Sales", "COGS", "Gross Profit", "Expenses", "Net Profit", "Cash In", "Cash Out", "Receivables"], [from, to, summary.netSales / 100, summary.cogs / 100, summary.grossProfit / 100, summary.expenses / 100, summary.netProfit / 100, summary.paid / 100, summary.expensePaid / 100, summary.receivables / 100]]);
+  const exportSales = () => downloadCsv("peakathlete-sales.csv", [["Order Date", "Order ID", "Source", "Customer", "Channel", "Items", "Status", "Notes", "Payment Status", "Payment Method", "Subtotal", "Shipping Fee", "Voucher Discount", "Cashier Discount", "Total Price Paid by Buyer", "Actual Shipping Fee", "Confirm & Complete Fee", "Enstack Voucher", "Total Sale", "Amount Collected"], ...orders.map((order) => [order.orderDate, order.orderNumber, order.source, order.customerName, order.salesChannel, order.itemsSummary, order.orderStatus, order.notes, order.paymentStatus, order.paymentMethod, order.subtotalCents / 100, order.shippingFeeCents / 100, order.voucherDiscountCents / 100, order.cashierDiscountCents / 100, order.totalCents / 100, order.actualShippingFeeCents / 100, order.transactionFeeCents / 100, order.enstackVoucherCents / 100, order.netSalesCents / 100, order.amountPaidCents / 100])]);
 
   const ymd = (date: Date) => {
     const year = date.getFullYear();
@@ -1079,11 +1078,25 @@ function ReportsView({ summary, orders, products, productSales, expenseCategorie
 }
 
 function SaleDialog({ open, setOpen, draft, setDraft, products, editing, saving, submit }: { open: boolean; setOpen: (open: boolean) => void; draft: SaleDraft; setDraft: (draft: SaleDraft) => void; products: Product[]; editing: boolean; saving: boolean; submit: (event: FormEvent) => void }) {
-  const totalSales = Math.max(
-    Number(draft.amountPaid || 0) +
-      Number(draft.shippingFee || 0) +
-      Number(draft.transactionFee || 0) -
-      Number(draft.discount || 0),
+  const subtotal = draft.items.reduce(
+    (sum, item) =>
+      sum + Number(item.quantity || 0) * Number(item.unitPrice || 0),
+    0,
+  );
+
+  const totalPricePaidByBuyer = Math.max(
+    subtotal +
+      Number(draft.shippingFee || 0) -
+      Number(draft.voucherDiscount || 0) -
+      Number(draft.cashierDiscount || 0),
+    0,
+  );
+
+  const totalSale = Math.max(
+    totalPricePaidByBuyer -
+      Number(draft.actualShippingFee || 0) -
+      Number(draft.transactionFee || 0) +
+      Number(draft.enstackVoucher || 0),
     0,
   );
 
@@ -1100,17 +1113,17 @@ function SaleDialog({ open, setOpen, draft, setDraft, products, editing, saving,
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="expense-dialog sale-dialog">
-        <form onSubmit={submit}>
+      <DialogContent className="expense-dialog sale-dialog" style={{ width: "min(1100px, calc(100vw - 32px))", maxWidth: "1100px", height: "min(860px, calc(100vh - 32px))", maxHeight: "calc(100vh - 32px)", overflow: "hidden" }}>
+        <form onSubmit={submit} style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
           <DialogHeader>
             <p className="eyebrow">{editing ? "EDIT SALE" : "NEW SALE"}</p>
             <DialogTitle>{editing ? "Update order" : "Add a sale"}</DialogTitle>
             <DialogDescription>
-              Record the Enstack order ID, products, buyer payment, fees, voucher, and total sales.
+              Record the order exactly like the Enstack sales breakdown.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="form-grid">
+          <div className="form-grid" style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", paddingRight: 8, alignContent: "start" }}>
             <Field label="Order date">
               <Text
                 value={draft.orderDate}
@@ -1124,7 +1137,7 @@ function SaleDialog({ open, setOpen, draft, setDraft, products, editing, saving,
               <Text
                 value={draft.orderNumber}
                 onChange={update("orderNumber")}
-                placeholder="Enter Enstack order ID"
+                placeholder="Enter Enstack / TikTok order ID"
               />
             </Field>
 
@@ -1176,8 +1189,8 @@ function SaleDialog({ open, setOpen, draft, setDraft, products, editing, saving,
               />
             </Field>
 
-            <div className="full sale-items">
-              <div className="line-heading">
+            <div className="full sale-items" style={{ width: "100%", minWidth: 0 }}>
+              <div className="line-heading" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, width: "100%", flexWrap: "wrap" }}>
                 <span>Products</span>
                 <Button
                   type="button"
@@ -1198,77 +1211,117 @@ function SaleDialog({ open, setOpen, draft, setDraft, products, editing, saving,
               </div>
 
               {draft.items.map((item, index) => (
-                <div className="sale-line" key={index}>
-                  <Choice
-                    value={item.productId}
-                    onChange={(productId) => {
-                      const product = products.find(
-                        (entry) => entry.id === productId,
-                      );
-                      updateLine(index, {
-                        productId,
-                        unitPrice: product
-                          ? String(product.sellingPriceCents / 100)
-                          : "",
-                      });
+                <div
+                  key={index}
+                  style={{
+                    display: "grid",
+                    gap: 10,
+                    width: "100%",
+                    minWidth: 0,
+                    padding: "12px 0",
+                  }}
+                >
+                  <div style={{ width: "100%", minWidth: 0 }}>
+                    <ProductPicker
+                      value={item.productId}
+                      products={products}
+                      onChange={(productId) => {
+                        const product = products.find(
+                          (entry) => entry.id === productId,
+                        );
+                        updateLine(index, {
+                          productId,
+                          unitPrice: product
+                            ? String(product.sellingPriceCents / 100)
+                            : "",
+                        });
+                      }}
+                    />
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "96px minmax(140px, 180px) 40px",
+                      gap: 10,
+                      alignItems: "center",
+                      justifyContent: "start",
+                      width: "100%",
+                      minWidth: 0,
                     }}
-                    options={products.map((product) => product.id)}
-                    labels={Object.fromEntries(
-                      products.map((product) => [
-                        product.id,
-                        `${product.name}${product.variant ? ` · ${product.variant}` : ""} (${product.stockQuantity} stock)`,
-                      ]),
-                    )}
-                    placeholder="Select product"
-                  />
-                  <Text
-                    value={item.quantity}
-                    onChange={(quantity) => updateLine(index, { quantity })}
-                    type="number"
-                    min="1"
-                    step="1"
-                    aria-label="Quantity"
-                  />
-                  <Money
-                    value={item.unitPrice}
-                    onChange={(unitPrice) => updateLine(index, { unitPrice })}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    disabled={draft.items.length === 1}
-                    onClick={() =>
-                      setDraft({
-                        ...draft,
-                        items: draft.items.filter(
-                          (_, position) => position !== index,
-                        ),
-                      })
-                    }
                   >
-                    <Trash2 size={15} />
-                  </Button>
+                    <Text
+                      value={item.quantity}
+                      onChange={(quantity) => updateLine(index, { quantity })}
+                      type="number"
+                      min="1"
+                      step="1"
+                      aria-label="Quantity"
+                    />
+                    <Money
+                      value={item.unitPrice}
+                      onChange={(unitPrice) => updateLine(index, { unitPrice })}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      disabled={draft.items.length === 1}
+                      onClick={() =>
+                        setDraft({
+                          ...draft,
+                          items: draft.items.filter(
+                            (_, position) => position !== index,
+                          ),
+                        })
+                      }
+                    >
+                      <Trash2 size={15} />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
 
-            <Field label="Total Price Paid by Buyer">
-              <Money
-                value={draft.amountPaid}
-                onChange={update("amountPaid")}
-                required
-              />
+            <Field label="Subtotal">
+              <div className="calculated-total">{peso.format(subtotal)}</div>
             </Field>
 
-            <Field label="Actual Shipping Fee">
+            <Field label="Shipping Fee">
               <Money
                 value={draft.shippingFee}
                 onChange={update("shippingFee")}
               />
             </Field>
 
-            <Field label="Confirm & Complete Fee">
+            <Field label="Voucher Discount">
+              <Money
+                value={draft.voucherDiscount}
+                onChange={update("voucherDiscount")}
+              />
+            </Field>
+
+            <Field label="Cashier Discount">
+              <Money
+                value={draft.cashierDiscount}
+                onChange={update("cashierDiscount")}
+              />
+            </Field>
+
+            <Field label="Total Price Paid By Buyer" full>
+              <div className="calculated-total">
+                {peso.format(totalPricePaidByBuyer)}
+              </div>
+            </Field>
+
+            <Field label="Actual Shipping Fee">
+              <Money
+                value={draft.actualShippingFee}
+                onChange={update("actualShippingFee")}
+              />
+            </Field>
+
+            <Field label="Confirm and Complete Fee">
               <Money
                 value={draft.transactionFee}
                 onChange={update("transactionFee")}
@@ -1277,18 +1330,27 @@ function SaleDialog({ open, setOpen, draft, setDraft, products, editing, saving,
 
             <Field label="Enstack Voucher">
               <Money
-                value={draft.discount}
-                onChange={update("discount")}
+                value={draft.enstackVoucher}
+                onChange={update("enstackVoucher")}
               />
             </Field>
 
-            <Field label="Total Sales" full>
-              <div className="calculated-total">{peso.format(totalSales)}</div>
+            <Field label="Total Sale" full>
+              <div className="calculated-total">{peso.format(totalSale)}</div>
             </Field>
+
+            {draft.paymentStatus === "Partial" && (
+              <Field label="Amount Collected">
+                <Money
+                  value={draft.amountPaid}
+                  onChange={update("amountPaid")}
+                />
+              </Field>
+            )}
 
             <div className="full">
               <small className="dialog-note">
-                Total Sales = Total Price Paid by Buyer + Actual Shipping Fee + Confirm & Complete Fee − Enstack Voucher.
+                Total Price Paid By Buyer = Subtotal + Shipping Fee − Voucher Discount − Cashier Discount. Total Sale = Total Price Paid By Buyer − Actual Shipping Fee − Confirm and Complete Fee + Enstack Voucher.
               </small>
             </div>
 
@@ -1394,7 +1456,158 @@ function MetricGrid({ items }: { items: { icon: ReactNode; label: string; value:
 function Field({ label, children, full = false }: { label: string; children: ReactNode; full?: boolean }) { return <label className={`field ${full ? "full" : ""}`}><span>{label}</span>{children}</label>; }
 function Text({ value, onChange, ...props }: { value: string; onChange: (value: string) => void } & Omit<React.ComponentProps<typeof Input>, "value" | "onChange">) { return <Input value={value} onChange={(event) => onChange(event.target.value)} {...props} />; }
 function Money({ value, onChange, required = false }: { value: string; onChange: (value: string) => void; required?: boolean }) { return <div className="money-input"><b>₱</b><Text type="number" min="0" step="0.01" value={value} onChange={onChange} required={required} /></div>; }
-function Choice({ value, onChange, options, labels, placeholder }: { value: string; onChange: (value: string) => void; options: string[]; labels?: Record<string, string>; placeholder?: string }) { return <Select value={value || undefined} onValueChange={onChange}><SelectTrigger className="form-select"><SelectValue placeholder={placeholder} /></SelectTrigger><SelectContent>{options.map((option) => <SelectItem key={option} value={option}>{labels?.[option] ?? option}</SelectItem>)}</SelectContent></Select>; }
+
+function ProductPicker({
+  value,
+  products,
+  onChange,
+}: {
+  value: string;
+  products: Product[];
+  onChange: (productId: string) => void;
+}) {
+  const selected = products.find((product) => product.id === value);
+  const selectedLabel = selected
+    ? `${selected.name}${selected.variant ? ` · ${selected.variant}` : ""}${selected.stockQuantity > 0 ? ` (${selected.stockQuantity} stock)` : ""}`
+    : "";
+
+  const [query, setQuery] = useState(selectedLabel);
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setQuery(selectedLabel);
+  }, [selectedLabel]);
+
+  useEffect(() => {
+    const close = (event: globalThis.MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
+
+  const filteredProducts = useMemo(() => {
+    const search = query.trim().toLowerCase();
+    if (!search || selectedLabel.toLowerCase() === search) return products;
+
+    return products.filter((product) => {
+      const label = `${product.name} ${product.variant} ${product.sku}`.toLowerCase();
+      return label.includes(search);
+    });
+  }, [products, query, selectedLabel]);
+
+  const choose = (product: Product) => {
+    const label = `${product.name}${product.variant ? ` · ${product.variant}` : ""}${product.stockQuantity > 0 ? ` (${product.stockQuantity} stock)` : ""}`;
+    setQuery(label);
+    setOpen(false);
+    onChange(product.id);
+  };
+
+  return (
+    <div ref={rootRef} style={{ position: "relative", width: "100%", minWidth: 0 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1fr) 44px",
+          alignItems: "stretch",
+          width: "100%",
+          minWidth: 0,
+        }}
+      >
+        <Input
+          value={query}
+          placeholder="Type product name"
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setOpen(false);
+            if (value) onChange("");
+          }}
+          style={{
+            width: "100%",
+            minWidth: 0,
+            borderTopRightRadius: 0,
+            borderBottomRightRadius: 0,
+          }}
+        />
+        <button
+          type="button"
+          aria-label="Show product list"
+          onClick={() => setOpen((current) => !current)}
+          style={{
+            display: "grid",
+            placeItems: "center",
+            border: "1px solid #303530",
+            borderLeft: 0,
+            borderRadius: "0 12px 12px 0",
+            background: "#101310",
+            color: "#aeb4ac",
+            cursor: "pointer",
+          }}
+        >
+          <ChevronDown size={18} />
+        </button>
+      </div>
+
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            zIndex: 80,
+            top: "calc(100% + 6px)",
+            left: 0,
+            right: 0,
+            maxHeight: 260,
+            overflowY: "auto",
+            border: "1px solid #303530",
+            borderRadius: 12,
+            background: "#101310",
+            boxShadow: "0 14px 34px rgba(0,0,0,.38)",
+            padding: 6,
+          }}
+        >
+          {filteredProducts.length ? (
+            filteredProducts.map((product) => {
+              const label = `${product.name}${product.variant ? ` · ${product.variant}` : ""}${product.stockQuantity > 0 ? ` (${product.stockQuantity} stock)` : ""}`;
+              return (
+                <button
+                  key={product.id}
+                  type="button"
+                  onClick={() => choose(product)}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    border: 0,
+                    borderRadius: 9,
+                    background: "transparent",
+                    padding: "10px 12px",
+                    color: "#e8eae4",
+                    textAlign: "left",
+                    cursor: "pointer",
+                  }}
+                  onMouseEnter={(event) => {
+                    event.currentTarget.style.background = "#1b1f1b";
+                  }}
+                  onMouseLeave={(event) => {
+                    event.currentTarget.style.background = "transparent";
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })
+          ) : (
+            <div style={{ padding: "10px 12px", color: "#7f877d", fontSize: 13 }}>
+              No matching products
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Choice({ value, onChange, options, labels, placeholder }: { value: string; onChange: (value: string) => void; options: string[]; labels?: Record<string, string>; placeholder?: string }) { return <Select value={value || undefined} onValueChange={onChange}><SelectTrigger className="form-select" style={{ width: "100%", minWidth: 0, maxWidth: "100%", overflow: "hidden" }}><SelectValue placeholder={placeholder} /></SelectTrigger><SelectContent>{options.map((option) => <SelectItem key={option} value={option}>{labels?.[option] ?? option}</SelectItem>)}</SelectContent></Select>; }
 function Status({ value }: { value: string }) { return <span className={`status-tag ${value.toLowerCase().replaceAll(" ", "-")}`}>{value}</span>; }
 function Empty({ text, icon, action }: { text: string; icon: ReactNode; action?: () => void }) { return <div className="empty-state"><span>{icon}</span><h3>{text}</h3>{action && <Button onClick={action} className="primary-button"><Plus size={16} /> Add first product</Button>}</div>; }
 function expenseCategoriesForCash(expenses: ExpenseMini[]) { return Object.entries(expenses.reduce<Record<string, number>>((all, expense) => ({ ...all, [expense.category]: (all[expense.category] ?? 0) + Math.max(expense.totalCents - expense.amountPaidCents, 0) }), {})).filter(([, value]) => value > 0).sort((a, b) => b[1] - a[1]).slice(0, 10); }

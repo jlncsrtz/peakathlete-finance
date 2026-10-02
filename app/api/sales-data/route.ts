@@ -48,11 +48,17 @@ const orderPayload = z.object({
 
   shippingMethod: z.string().trim().max(100).optional().default(""),
 
-  discount: z.coerce.number().min(0).max(100000000).default(0),
-
   shippingFee: z.coerce.number().min(0).max(100000000).default(0),
 
+  voucherDiscount: z.coerce.number().min(0).max(100000000).default(0),
+
+  cashierDiscount: z.coerce.number().min(0).max(100000000).default(0),
+
+  actualShippingFee: z.coerce.number().min(0).max(100000000).default(0),
+
   transactionFee: z.coerce.number().min(0).max(100000000).default(0),
+
+  enstackVoucher: z.coerce.number().min(0).max(100000000).default(0),
 
   amountPaid: z.coerce.number().min(0).max(100000000).default(0),
 
@@ -230,26 +236,50 @@ async function prepareOrder(value: OrderPayload) {
 
   const subtotalCents = items.reduce((sum, item) => sum + item.lineTotalCents, 0);
 
-  // Manual sales use the fields below exactly as entered in the Add Sale form:
-  // Total Sales = Buyer Paid + Actual Shipping + Confirm & Complete Fee - Enstack Voucher.
-  const discountCents = cents(value.discount);
   const shippingFeeCents = cents(value.shippingFee);
-  const transactionFeeCents = cents(value.transactionFee);
-  const amountPaidCents = cents(value.amountPaid);
+  const voucherDiscountCents = cents(value.voucherDiscount);
+  const cashierDiscountCents = cents(value.cashierDiscount);
+  const discountCents = voucherDiscountCents + cashierDiscountCents;
 
   const totalCents = Math.max(
-    amountPaidCents + shippingFeeCents + transactionFeeCents - discountCents,
+    subtotalCents +
+      shippingFeeCents -
+      voucherDiscountCents -
+      cashierDiscountCents,
     0,
   );
+
+  const actualShippingFeeCents = cents(value.actualShippingFee);
+  const transactionFeeCents = cents(value.transactionFee);
+  const enstackVoucherCents = cents(value.enstackVoucher);
+
+  const netSalesCents = Math.max(
+    totalCents -
+      actualShippingFeeCents -
+      transactionFeeCents +
+      enstackVoucherCents,
+    0,
+  );
+
+  const amountPaidCents =
+    value.paymentStatus === "Paid"
+      ? totalCents
+      : value.paymentStatus === "Unpaid"
+        ? 0
+        : Math.min(cents(value.amountPaid), totalCents);
 
   return {
     items,
     subtotalCents,
     discountCents,
+    voucherDiscountCents,
+    cashierDiscountCents,
     shippingFeeCents,
+    actualShippingFeeCents,
     transactionFeeCents,
+    enstackVoucherCents,
     totalCents,
-    netSalesCents: totalCents,
+    netSalesCents,
     amountPaidCents,
   };
 
@@ -319,9 +349,17 @@ function orderRow(value: OrderPayload, prepared: Awaited<ReturnType<typeof prepa
 
     discount_cents: prepared.discountCents,
 
+    voucher_discount_cents: prepared.voucherDiscountCents,
+
+    cashier_discount_cents: prepared.cashierDiscountCents,
+
     shipping_fee_cents: prepared.shippingFeeCents,
 
+    actual_shipping_fee_cents: prepared.actualShippingFeeCents,
+
     transaction_fee_cents: prepared.transactionFeeCents,
+
+    enstack_voucher_cents: prepared.enstackVoucherCents,
 
     total_cents: prepared.totalCents,
 
@@ -367,7 +405,11 @@ export async function GET(request: Request) {
 
       itemsSummary:items_summary, subtotalCents:subtotal_cents, discountCents:discount_cents,
 
-      shippingFeeCents:shipping_fee_cents, transactionFeeCents:transaction_fee_cents,
+      voucherDiscountCents:voucher_discount_cents, cashierDiscountCents:cashier_discount_cents,
+
+      shippingFeeCents:shipping_fee_cents, actualShippingFeeCents:actual_shipping_fee_cents,
+
+      transactionFeeCents:transaction_fee_cents, enstackVoucherCents:enstack_voucher_cents,
 
       totalCents:total_cents, netSalesCents:net_sales_cents, amountPaidCents:amount_paid_cents,
 
