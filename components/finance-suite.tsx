@@ -20,6 +20,8 @@ type FinanceResponse = { orders: Omit<Sale, "items">[]; items: SaleItem[]; produ
 type SaleLineDraft = { productId: string; productName: string; quantity: string; unitPrice: string };
 type SaleDraft = { orderDate: string; orderNumber: string; customerName: string; salesChannel: string; orderStatus: string; paymentStatus: string; paymentMethod: string; shippingMethod: string; shippingFee: string; voucherDiscount: string; cashierDiscount: string; actualShippingFee: string; transactionFee: string; enstackVoucher: string; amountPaid: string; notes: string; items: SaleLineDraft[] };
 type ProductDraft = { name: string; sku: string; variant: string; cost: string; sellingPrice: string; stockQuantity: string; lowStockThreshold: string };
+type NewVariantDraft = { key: string; variant: string; cost: string; sellingPrice: string; stockQuantity: string };
+const newVariantRow = (): NewVariantDraft => ({ key: crypto.randomUUID(), variant: "", cost: "", sellingPrice: "", stockQuantity: "0" });
 type FinanceSummary = { grossSales: number; netSales: number; paid: number; receivables: number; cogs: number; expenses: number; expensePaid: number; grossProfit: number; netProfit: number; cashBalance: number };
 
 const peso = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 2 });
@@ -68,6 +70,7 @@ export function FinanceSuite({
   const [inventoryImportDialog, setInventoryImportDialog] = useState(false);
   const [saleDraft, setSaleDraft] = useState<SaleDraft>(blankSale);
   const [productDraft, setProductDraft] = useState<ProductDraft>(blankProduct);
+  const [newProductVariants, setNewProductVariants] = useState<NewVariantDraft[]>(() => [newVariantRow()]);
   const [editingSale, setEditingSale] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<string | null>(null);
   const [addingVariant, setAddingVariant] = useState(false);
@@ -158,7 +161,7 @@ export function FinanceSuite({
     setSaleDraft({ orderDate: order.orderDate, orderNumber: order.orderNumber, customerName: order.customerName, salesChannel: order.salesChannel, orderStatus: order.orderStatus, paymentStatus: order.paymentStatus, paymentMethod: order.paymentMethod, shippingMethod: order.shippingMethod, shippingFee: draftMoney(order.shippingFeeCents), voucherDiscount: draftMoney(order.voucherDiscountCents), cashierDiscount: draftMoney(order.cashierDiscountCents), actualShippingFee: draftMoney(order.actualShippingFeeCents), transactionFee: draftMoney(order.transactionFeeCents), enstackVoucher: draftMoney(order.enstackVoucherCents), amountPaid: draftMoney(order.amountPaidCents), notes: order.notes, items: order.items.map((item) => ({ productId: item.productId ?? "", productName: item.productName, quantity: String(item.quantity), unitPrice: String(item.unitPriceCents / 100) })) });
     setSaleDialog(true);
   };
-  const openNewProduct = () => { setAddingVariant(false); setEditingProduct(null); setProductDraft(blankProduct()); setProductDialog(true); };
+  const openNewProduct = () => { setAddingVariant(false); setEditingProduct(null); setProductDraft(blankProduct()); setNewProductVariants([newVariantRow()]); setProductDialog(true); };
   const openProduct = (product: Product) => { setAddingVariant(false); setEditingProduct(product.id); setProductDraft({ name: product.name, sku: product.sku, variant: product.variant, cost: String(product.costCents / 100), sellingPrice: String(product.sellingPriceCents / 100), stockQuantity: String(product.stockQuantity), lowStockThreshold: String(product.lowStockThreshold) }); setProductDialog(true); };
 
   const openAddVariant = (product: Product) => {
@@ -305,9 +308,73 @@ export function FinanceSuite({
     return `${base}${separator}${desired}`;
   };
 
+  const newProductSku = (name: string, variant: string) => {
+    const fromSibling = suggestedVariantSku(name, variant);
+    if (fromSibling) return fromSibling;
+    const base = name.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const suffix = variant.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "");
+    return base && suffix ? `${base}-${suffix}` : "";
+  };
+
   const saveProduct = async (event: FormEvent) => {
     event.preventDefault();
     if (saving) return;
+
+    // New catalog products can be created with multiple independent sizes.
+    if (!editingProduct && !addingVariant) {
+      const name = productDraft.name.trim();
+      if (!name || !newProductVariants.length) {
+        toast.error("Enter a product name and at least one variant.");
+        return;
+      }
+      const existing = new Set(data.products.map((p) => p.sku.trim().toLowerCase()));
+      const seenSkus = new Set<string>();
+      const seenVariants = new Set<string>();
+      const rows = [] as Array<{variant: string; sku: string; cost: string; sellingPrice: string; stockQuantity: string}>;
+      for (const [index, item] of newProductVariants.entries()) {
+        const variant = item.variant.trim();
+        const sku = newProductSku(name, variant);
+        const stock = Number(item.stockQuantity);
+        const price = Number(item.sellingPrice);
+        const cost = Number(item.cost);
+        if (!variant || !sku || !item.sellingPrice.trim() || !item.cost.trim() ||
+          !Number.isFinite(price) || price < 0 || !Number.isFinite(cost) || cost < 0 ||
+          !item.stockQuantity.trim() || !Number.isSafeInteger(stock) || stock < 0) {
+          toast.error(`Variant ${index + 1}: Fill in size, price, cost, and valid stock.`);
+          return;
+        }
+        if (seenVariants.has(variant.toLowerCase()) || seenSkus.has(sku.toLowerCase()) || existing.has(sku.toLowerCase()) ||
+          data.products.some((p) => inventoryProductIdentity(p).baseName.toLowerCase() === name.toLowerCase() && inventoryProductIdentity(p).variant.toLowerCase() === variant.toLowerCase())) {
+          toast.error(`Variant ${index + 1}: Duplicate size/variant or SKU (${sku}).`);
+          return;
+        }
+        seenVariants.add(variant.toLowerCase());
+        seenSkus.add(sku.toLowerCase());
+        rows.push({ variant, sku, cost: item.cost, sellingPrice: item.sellingPrice, stockQuantity: item.stockQuantity });
+      }
+      setSaving(true);
+      let created = 0;
+      try {
+        for (const row of rows) {
+          const response = await fetch("/api/sales-data", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ resource: "product", name, ...row, lowStockThreshold: "5" }),
+          });
+          const result = await response.json() as { error?: string };
+          if (!response.ok) throw new Error(result.error ?? `Could not create ${row.variant}`);
+          created++;
+        }
+        await loadData();
+        setProductDialog(false);
+        toast.success(`Product added with ${created} variant${created === 1 ? "" : "s"}.`);
+      } catch (error) {
+        // Each existing API call creates one record; failures may leave earlier rows saved.
+        await loadData();
+        toast.error(`${created} of ${rows.length} variants saved. ${error instanceof Error ? error.message : "Save failed."} Check inventory before retrying.`);
+      } finally { setSaving(false); }
+      return;
+    }
     const variant = productDraft.variant.trim();
     const productName = productDraft.name.trim();
     const siblings = data.products.filter((entry) =>
@@ -437,7 +504,7 @@ export function FinanceSuite({
     {view === "cashflow" && <CashFlowView summary={summary} orders={activeOrders} expenses={data.expenses} />}
     {view === "reports" && <ReportsView summary={summary} orders={orders} products={data.products} productSales={productSales} expenseCategories={expenseCategories} from={reportFrom} to={reportTo} setFrom={setReportFrom} setTo={setReportTo} refresh={applyReportRange} refreshing={refreshing} />}
     <SaleDialog open={saleDialog} setOpen={setSaleDialog} draft={saleDraft} setDraft={setSaleDraft} products={data.products} editing={Boolean(editingSale)} saving={saving} submit={saveSale} />
-    <ProductDialog open={productDialog} setOpen={setProductDialog} draft={productDraft} setDraft={setProductDraft} editing={Boolean(editingProduct)} addingVariant={addingVariant} generatedSku={addingVariant ? suggestedVariantSku(productDraft.name, productDraft.variant) : ""} saving={saving} submit={saveProduct} />
+    <ProductDialog open={productDialog} setOpen={setProductDialog} draft={productDraft} setDraft={setProductDraft} editing={Boolean(editingProduct)} addingVariant={addingVariant} generatedSku={addingVariant ? suggestedVariantSku(productDraft.name, productDraft.variant) : ""} newVariants={newProductVariants} setNewVariants={setNewProductVariants} makeSku={newProductSku} saving={saving} submit={saveProduct} />
     <ImportDialog open={importDialog} setOpen={setImportDialog} file={importFile} setFile={setImportFile} saving={saving} submit={importEnstack} />
     <InventoryImportDialog open={inventoryImportDialog} setOpen={setInventoryImportDialog} file={inventoryImportFile} setFile={setInventoryImportFile} saving={saving} submit={importInventory} />
     <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete this record?</AlertDialogTitle><AlertDialogDescription>{deleteTarget?.label} will be permanently removed. Stock from fulfilled sales will be restored.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => void removeRecord()}>Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
@@ -1607,7 +1674,7 @@ function SaleDialog({ open, setOpen, draft, setDraft, products, editing, saving,
   );
 }
 
-function ProductDialog({ open, setOpen, draft, setDraft, editing, addingVariant, generatedSku, saving, submit }: {
+function ProductDialog({ open, setOpen, draft, setDraft, editing, addingVariant, generatedSku, newVariants, setNewVariants, makeSku, saving, submit }: {
   open: boolean;
   setOpen: (open: boolean) => void;
   draft: ProductDraft;
@@ -1615,6 +1682,9 @@ function ProductDialog({ open, setOpen, draft, setDraft, editing, addingVariant,
   editing: boolean;
   addingVariant: boolean;
   generatedSku: string;
+  newVariants: NewVariantDraft[];
+  setNewVariants: (rows: NewVariantDraft[]) => void;
+  makeSku: (name: string, variant: string) => string;
   saving: boolean;
   submit: (event: FormEvent) => void;
 }) {
@@ -1635,10 +1705,57 @@ function ProductDialog({ open, setOpen, draft, setDraft, editing, addingVariant,
                 ? "Add another size, color, or style to this product. Product name and prices are already filled in."
                 : editing
                   ? "Update this specific size or variant. Use the stock controls in the inventory table to adjust stock."
-                  : "Enter the product details below. You can add more sizes or variants later."}
+                  : "Create a product with multiple sizes or variants. Set the price and starting stock for each one."}
             </DialogDescription>
           </DialogHeader>
 
+          {!editing && !addingVariant ? (
+            <div style={{ display: "grid", gap: 18, paddingTop: 12 }}>
+              <Field label="Product name" full>
+                <Text value={draft.name} onChange={update("name")} placeholder="e.g. APEX Oversized" required />
+              </Field>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <div><strong>Sizes / Variants</strong><small style={{ display: "block", opacity: 0.7 }}>Set the price and initial stock for each size.</small></div>
+                <Button type="button" variant="outline" size="sm" onClick={() => setNewVariants([...newVariants, newVariantRow()])}>
+                  <Plus size={15} /> Add variant
+                </Button>
+              </div>
+              <div style={{ display: "grid", gap: 12, maxHeight: "48vh", overflowY: "auto", paddingRight: 4 }}>
+                {newVariants.map((item, index) => {
+                  const change = (field: keyof Omit<NewVariantDraft, "key">, value: string) =>
+                    setNewVariants(newVariants.map((row) => row.key === item.key ? { ...row, [field]: value } : row));
+                  return (
+                    <div key={item.key} style={{ border: "1px solid #343a34", borderRadius: 12, padding: 14, display: "grid", gap: 12 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <strong>Variant {index + 1}</strong>
+                        <Button type="button" variant="ghost" size="icon" disabled={newVariants.length === 1} aria-label={`Remove variant ${index + 1}`} onClick={() => setNewVariants(newVariants.filter((row) => row.key !== item.key))}>
+                          <Trash2 size={15} />
+                        </Button>
+                      </div>
+                      <div className="form-grid">
+                        <Field label="Size / Variant" full>
+                          <Text value={item.variant} onChange={(v) => change("variant", v)} placeholder="S, M, L, XL, Black..." required />
+                        </Field>
+                        <Field label="Selling price (₱)">
+                          <Money value={item.sellingPrice} onChange={(v) => change("sellingPrice", v)} required />
+                        </Field>
+                        <Field label="Unit cost (₱)">
+                          <Money value={item.cost} onChange={(v) => change("cost", v)} required />
+                        </Field>
+                        <Field label="Starting stock">
+                          <Text value={item.stockQuantity} onChange={(v) => change("stockQuantity", v)} type="number" min="0" step="1" required />
+                        </Field>
+                        <Field label="Auto-generated SKU" full>
+                          <Input value={makeSku(draft.name, item.variant)} placeholder="Enter product and variant" readOnly tabIndex={-1} />
+                        </Field>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+          <>
           <div className="form-grid">
             <Field label="Product name" full>
               <Text value={draft.name} onChange={update("name")} placeholder="e.g. APEX Oversized" required readOnly={addingVariant} />
@@ -1675,12 +1792,14 @@ function ProductDialog({ open, setOpen, draft, setDraft, editing, addingVariant,
           {addingVariant && (
             <small className="dialog-note">SKU follows the pattern of an existing variant. Low-stock threshold is automatically set to 5 units.</small>
           )}
+          </>
+          )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
             <Button type="submit" className="primary-button" disabled={saving}>
               {saving && <Loader2 className="spin" size={16} />}
-              {editing ? "Save changes" : addingVariant ? "Add variant" : "Add product"}
+              {editing ? "Save changes" : addingVariant ? "Add variant" : `Add product (${newVariants.length} variants)`}
             </Button>
           </DialogFooter>
         </form>
