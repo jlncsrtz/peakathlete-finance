@@ -70,6 +70,7 @@ export function FinanceSuite({
   const [productDraft, setProductDraft] = useState<ProductDraft>(blankProduct);
   const [editingSale, setEditingSale] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<string | null>(null);
+  const [addingVariant, setAddingVariant] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ resource: "order" | "product"; id: string; label: string } | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [inventoryImportFile, setInventoryImportFile] = useState<File | null>(null);
@@ -157,8 +158,24 @@ export function FinanceSuite({
     setSaleDraft({ orderDate: order.orderDate, orderNumber: order.orderNumber, customerName: order.customerName, salesChannel: order.salesChannel, orderStatus: order.orderStatus, paymentStatus: order.paymentStatus, paymentMethod: order.paymentMethod, shippingMethod: order.shippingMethod, shippingFee: draftMoney(order.shippingFeeCents), voucherDiscount: draftMoney(order.voucherDiscountCents), cashierDiscount: draftMoney(order.cashierDiscountCents), actualShippingFee: draftMoney(order.actualShippingFeeCents), transactionFee: draftMoney(order.transactionFeeCents), enstackVoucher: draftMoney(order.enstackVoucherCents), amountPaid: draftMoney(order.amountPaidCents), notes: order.notes, items: order.items.map((item) => ({ productId: item.productId ?? "", productName: item.productName, quantity: String(item.quantity), unitPrice: String(item.unitPriceCents / 100) })) });
     setSaleDialog(true);
   };
-  const openNewProduct = () => { setEditingProduct(null); setProductDraft(blankProduct()); setProductDialog(true); };
-  const openProduct = (product: Product) => { setEditingProduct(product.id); setProductDraft({ name: product.name, sku: product.sku, variant: product.variant, cost: String(product.costCents / 100), sellingPrice: String(product.sellingPriceCents / 100), stockQuantity: String(product.stockQuantity), lowStockThreshold: String(product.lowStockThreshold) }); setProductDialog(true); };
+  const openNewProduct = () => { setAddingVariant(false); setEditingProduct(null); setProductDraft(blankProduct()); setProductDialog(true); };
+  const openProduct = (product: Product) => { setAddingVariant(false); setEditingProduct(product.id); setProductDraft({ name: product.name, sku: product.sku, variant: product.variant, cost: String(product.costCents / 100), sellingPrice: String(product.sellingPriceCents / 100), stockQuantity: String(product.stockQuantity), lowStockThreshold: String(product.lowStockThreshold) }); setProductDialog(true); };
+
+  const openAddVariant = (product: Product) => {
+    setAddingVariant(true);
+    const { baseName } = inventoryProductIdentity(product);
+    setEditingProduct(null);
+    setProductDraft({
+      name: baseName,
+      sku: "",
+      variant: "",
+      cost: String(product.costCents / 100),
+      sellingPrice: String(product.sellingPriceCents / 100),
+      stockQuantity: "0",
+      lowStockThreshold: "5",
+    });
+    setProductDialog(true);
+  };
 
   const saveSale = async (event: FormEvent) => {
     event.preventDefault();
@@ -269,10 +286,56 @@ export function FinanceSuite({
     }
   };
 
+  // Copy the naming convention of another variant of the same product.
+  const suggestedVariantSku = (name: string, variant: string): string => {
+    const desired = variant.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "");
+    if (!desired) return "";
+    const siblings = data.products.filter((entry) =>
+      inventoryProductIdentity(entry).baseName.toLowerCase() === name.trim().toLowerCase()
+    );
+    const source = siblings.find((entry) => Boolean(entry.sku.trim()));
+    if (!source) return "";
+    const siblingVariant = inventoryProductIdentity(source).variant.toUpperCase().replace(/[^A-Z0-9]+/g, "-");
+    const currentSku = source.sku.trim();
+    // Use a literal suffix comparison instead of a user-controlled regex.
+    const candidates = ["-", "_", " "];
+    const separator = candidates.find((sep) => currentSku.toUpperCase().endsWith(`${sep}${siblingVariant}`)) ?? "-";
+    const hasSuffix = currentSku.toUpperCase().endsWith(`${separator}${siblingVariant}`);
+    const base = hasSuffix ? currentSku.slice(0, -(`${separator}${siblingVariant}`).length) : currentSku;
+    return `${base}${separator}${desired}`;
+  };
+
   const saveProduct = async (event: FormEvent) => {
-    event.preventDefault(); setSaving(true);
+    event.preventDefault();
+    if (saving) return;
+    const variant = productDraft.variant.trim();
+    const productName = productDraft.name.trim();
+    const siblings = data.products.filter((entry) =>
+      inventoryProductIdentity(entry).baseName.toLowerCase() === productName.toLowerCase()
+      && entry.id !== editingProduct
+    );
+    if (addingVariant && !variant) {
+      toast.error("Enter a size or variant first.");
+      return;
+    }
+    if (addingVariant && siblings.some((entry) => inventoryProductIdentity(entry).variant.toLowerCase() === variant.toLowerCase())) {
+      toast.error("This size or variant already exists for this product.");
+      return;
+    }
+    const sku = addingVariant
+      ? suggestedVariantSku(productName, variant)
+      : productDraft.sku.trim() || `AUTO-${crypto.randomUUID()}`;
+    if (addingVariant && !sku) {
+      toast.error("Unable to generate SKU: existing variant has no SKU.");
+      return;
+    }
+    if (data.products.some((entry) => entry.sku.toLowerCase() === sku.toLowerCase() && entry.id !== editingProduct)) {
+      toast.error("Generated SKU already exists. Please check this product's existing SKUs.");
+      return;
+    }
+    setSaving(true);
     try {
-      const response = await fetch("/api/sales-data", { method: editingProduct ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ resource: "product", id: editingProduct, ...productDraft }) });
+      const response = await fetch("/api/sales-data", { method: editingProduct ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ resource: "product", id: editingProduct, ...productDraft, sku, variant, lowStockThreshold: editingProduct ? productDraft.lowStockThreshold : "5" }) });
       const result = await response.json() as { error?: string };
       if (!response.ok) throw new Error(result.error ?? "Couldn’t save product");
       await loadData(); setProductDialog(false); toast.success(editingProduct ? "Product updated" : "Product added");
@@ -369,12 +432,12 @@ export function FinanceSuite({
   if (loading) return <div className="loading-state"><Loader2 className="spin" size={23} /> Loading finance data…</div>;
   return <>
     {view === "sales" && <SalesView orders={filteredOrders} summary={summary} search={search} setSearch={setSearch} status={status} setStatus={setStatus} add={openNewSale} edit={openSale} remove={(order) => setDeleteTarget({ resource: "order", id: order.id, label: order.orderNumber })} importCsv={() => setImportDialog(true)} />}
-    {view === "products" && <ProductsView products={data.products} movements={data.movements} add={openNewProduct} importInventory={() => setInventoryImportDialog(true)} adjustStock={quickAdjustStock} remove={(product) => setDeleteTarget({ resource: "product", id: product.id, label: `${product.name}${product.variant ? ` - ${product.variant}` : ""}` })} />}
+    {view === "products" && <ProductsView products={data.products} movements={data.movements} add={openNewProduct} edit={openProduct} addVariant={openAddVariant} importInventory={() => setInventoryImportDialog(true)} adjustStock={quickAdjustStock} remove={(product) => setDeleteTarget({ resource: "product", id: product.id, label: `${product.name}${product.variant ? ` - ${product.variant}` : ""}` })} />}
     {view === "profit" && <ProfitView summary={summary} orders={completedOrders} />}
     {view === "cashflow" && <CashFlowView summary={summary} orders={activeOrders} expenses={data.expenses} />}
     {view === "reports" && <ReportsView summary={summary} orders={orders} products={data.products} productSales={productSales} expenseCategories={expenseCategories} from={reportFrom} to={reportTo} setFrom={setReportFrom} setTo={setReportTo} refresh={applyReportRange} refreshing={refreshing} />}
     <SaleDialog open={saleDialog} setOpen={setSaleDialog} draft={saleDraft} setDraft={setSaleDraft} products={data.products} editing={Boolean(editingSale)} saving={saving} submit={saveSale} />
-    <ProductDialog open={productDialog} setOpen={setProductDialog} draft={productDraft} setDraft={setProductDraft} editing={Boolean(editingProduct)} saving={saving} submit={saveProduct} />
+    <ProductDialog open={productDialog} setOpen={setProductDialog} draft={productDraft} setDraft={setProductDraft} editing={Boolean(editingProduct)} addingVariant={addingVariant} generatedSku={addingVariant ? suggestedVariantSku(productDraft.name, productDraft.variant) : ""} saving={saving} submit={saveProduct} />
     <ImportDialog open={importDialog} setOpen={setImportDialog} file={importFile} setFile={setImportFile} saving={saving} submit={importEnstack} />
     <InventoryImportDialog open={inventoryImportDialog} setOpen={setInventoryImportDialog} file={inventoryImportFile} setFile={setInventoryImportFile} saving={saving} submit={importInventory} />
     <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete this record?</AlertDialogTitle><AlertDialogDescription>{deleteTarget?.label} will be permanently removed. Stock from fulfilled sales will be restored.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => void removeRecord()}>Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
@@ -710,7 +773,16 @@ function inventoryProductIdentity(product: Product) {
   };
 }
 
-function ProductsView({ products, movements, add, importInventory, adjustStock, remove }: { products: Product[]; movements: Movement[]; add: () => void; importInventory: () => void; adjustStock: (product: Product, quantityDelta: number) => Promise<void>; remove: (product: Product) => void }) {
+function ProductsView({ products, movements, add, edit, addVariant, importInventory, adjustStock, remove }: {
+  products: Product[];
+  movements: Movement[];
+  add: () => void;
+  edit: (product: Product) => void;
+  addVariant: (product: Product) => void;
+  importInventory: () => void;
+  adjustStock: (product: Product, quantityDelta: number) => Promise<void>;
+  remove: (product: Product) => void;
+}) {
   const [stockFilter, setStockFilter] = useState("All stock");
   const [productSearch, setProductSearch] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -930,6 +1002,23 @@ function ProductsView({ products, movements, add, importInventory, adjustStock, 
                 ];
 
                 if (isOpen) {
+                  rows.push(
+                    <TableRow key={`actions-${group.key}`}>
+                      <TableCell colSpan={6}>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", padding: "8px 0 10px 28px" }}>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => addVariant(group.variants[0])}
+                          >
+                            <Plus size={14} /> Add variant
+                          </Button>
+
+                        </div>
+                      </TableCell>
+                    </TableRow>,
+                  );
                   for (const product of group.variants) {
                     const variantName = inventoryProductIdentity(product).variant;
 
@@ -1008,6 +1097,16 @@ function ProductsView({ products, movements, add, importInventory, adjustStock, 
 
                         <TableCell>
                           <div className="row-actions">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => edit(product)}
+                              aria-label={`Edit ${group.name} ${variantName}`}
+                              title={`Edit ${group.name} ${variantName}`}
+                            >
+                              <Pencil size={15} />
+                            </Button>
                             <Button
                               type="button"
                               variant="ghost"
@@ -1508,9 +1607,86 @@ function SaleDialog({ open, setOpen, draft, setDraft, products, editing, saving,
   );
 }
 
-function ProductDialog({ open, setOpen, draft, setDraft, editing, saving, submit }: { open: boolean; setOpen: (open: boolean) => void; draft: ProductDraft; setDraft: (draft: ProductDraft) => void; editing: boolean; saving: boolean; submit: (event: FormEvent) => void }) {
-  const update = (key: keyof ProductDraft) => (value: string) => setDraft({ ...draft, [key]: value });
-  return <Dialog open={open} onOpenChange={setOpen}><DialogContent className="budget-dialog product-dialog"><form onSubmit={submit}><DialogHeader><p className="eyebrow">{editing ? "EDIT PRODUCT" : "NEW PRODUCT"}</p><DialogTitle>{editing ? "Update product" : "Add product"}</DialogTitle><DialogDescription>Set the selling price, cost, and inventory threshold.</DialogDescription></DialogHeader><div className="form-grid"><Field label="Product name" full><Text value={draft.name} onChange={update("name")} required /></Field><Field label="SKU"><Text value={draft.sku} onChange={update("sku")} required /></Field><Field label="Variant"><Text value={draft.variant} onChange={update("variant")} placeholder="Size, color, or style" /></Field><Field label="Unit cost"><Money value={draft.cost} onChange={update("cost")} required /></Field><Field label="Selling price"><Money value={draft.sellingPrice} onChange={update("sellingPrice")} required /></Field>{!editing && <Field label="Starting stock"><Text value={draft.stockQuantity} onChange={update("stockQuantity")} type="number" min="0" step="1" required /></Field>}<Field label="Low-stock warning"><Text value={draft.lowStockThreshold} onChange={update("lowStockThreshold")} type="number" min="0" step="1" required /></Field></div><DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" className="primary-button" disabled={saving}>Save product</Button></DialogFooter></form></DialogContent></Dialog>;
+function ProductDialog({ open, setOpen, draft, setDraft, editing, addingVariant, generatedSku, saving, submit }: {
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  draft: ProductDraft;
+  setDraft: (draft: ProductDraft) => void;
+  editing: boolean;
+  addingVariant: boolean;
+  generatedSku: string;
+  saving: boolean;
+  submit: (event: FormEvent) => void;
+}) {
+  const update = (key: keyof ProductDraft) => (value: string) =>
+    setDraft({ ...draft, [key]: value });
+
+  const heading = editing ? "Edit variant" : addingVariant ? "Add new variant" : "Add product";
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent className="budget-dialog product-dialog">
+        <form onSubmit={submit}>
+          <DialogHeader>
+            <p className="eyebrow">{editing ? "EDIT VARIANT" : addingVariant ? "NEW VARIANT" : "PRODUCT CATALOG"}</p>
+            <DialogTitle>{heading}</DialogTitle>
+            <DialogDescription>
+              {addingVariant
+                ? "Add another size, color, or style to this product. Product name and prices are already filled in."
+                : editing
+                  ? "Update this specific size or variant. Use the stock controls in the inventory table to adjust stock."
+                  : "Enter the product details below. You can add more sizes or variants later."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="form-grid">
+            <Field label="Product name" full>
+              <Text value={draft.name} onChange={update("name")} placeholder="e.g. APEX Oversized" required readOnly={addingVariant} />
+            </Field>
+
+            <Field label="Size / Variant" full>
+              <Text value={draft.variant} onChange={update("variant")} placeholder="e.g. S, M, L, Black, or Blue" required={addingVariant} />
+            </Field>
+
+            <Field label="Selling price (₱)">
+              <Money value={draft.sellingPrice} onChange={update("sellingPrice")} required />
+            </Field>
+            <Field label="Unit cost (₱)">
+              <Money value={draft.cost} onChange={update("cost")} required />
+            </Field>
+
+            {!editing && (
+              <Field label="Starting stock (units)">
+                <Text value={draft.stockQuantity} onChange={update("stockQuantity")} type="number" min="0" step="1" required />
+              </Field>
+            )}
+
+            {addingVariant ? (
+              <Field label="SKU (automatically generated)" full>
+                <Input value={generatedSku || "Enter a variant to preview SKU"} readOnly tabIndex={-1} />
+              </Field>
+            ) : (
+              <Field label={editing ? "SKU" : "SKU (optional)"} full>
+                <Text value={draft.sku} onChange={update("sku")} placeholder="e.g. APEX-S" required={editing} />
+              </Field>
+            )}
+          </div>
+
+          {addingVariant && (
+            <small className="dialog-note">SKU follows the pattern of an existing variant. Low-stock threshold is automatically set to 5 units.</small>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button type="submit" className="primary-button" disabled={saving}>
+              {saving && <Loader2 className="spin" size={16} />}
+              {editing ? "Save changes" : addingVariant ? "Add variant" : "Add product"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function ImportDialog({ open, setOpen, file, setFile, saving, submit }: { open: boolean; setOpen: (open: boolean) => void; file: File | null; setFile: (file: File | null) => void; saving: boolean; submit: (event: FormEvent) => void }) {
