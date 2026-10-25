@@ -1,0 +1,100 @@
+
+name: Supabase Keep Alive
+
+on:
+  schedule:
+    - cron: "0 0,8,16 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check Supabase database
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "Missing Supabase GitHub secrets."
+            exit 1
+          fi
+
+          STATUS=$(curl --silent --show-error \
+            --output /tmp/supabase-response.json \
+            --write-out "%{http_code}" \
+            --max-time 30 \
+            --get \
+            --data-urlencode "select=id" \
+            --data-urlencode "limit=1" \
+            "$SUPABASE_URL/rest/v1/products" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY")
+
+          if [ "$STATUS" != "200" ] && [ "$STATUS" != "206" ]; then
+            echo "Supabase database check failed. HTTP $STATUS"
+            cat /tmp/supabase-response.json
+            exit 1
+          fi
+
+          echo "Supabase database query successful."
+```
+ 
+<text color="secondary" size="xs">Schedule: 8:00 AM, 4:00 PM, at 12:00 midnight Philippine time (UTC+8). Hindi guaranteed ang exact execution time ng scheduled GitHub Actions.</text>
+
+## Step 2 — Ilagay ang Supabase credentials sa GitHub
+
+Pumunta sa repository mo:
+
+<Link url="https://github.com/jlncsrtz/peakathlete-finance" title="PeakAthlete Finance — GitHub"/>
+
+Buksan ang **Settings → Secrets and variables → Actions → New repository secret**.
+
+Mag-create ng dalawang secrets:
+
+| Secret name | Value |
+|---|---|
+| `SUPABASE_URL` | Project URL mula sa Supabase |
+| `SUPABASE_ANON_KEY` | Supabase publishable/anon API key |
+
+Makikita mo ang values sa Supabase Dashboard → Project Settings → API Keys / Data API.
+
+**Huwag gamitin ang `service_role` o secret key dito.** Kung may RLS restrictions ang `products`, mas ligtas na gumawa ng dedicated read-only health-check endpoint kaysa buksan ang product records sa public access.
+
+## Step 3 — Push sa GitHub main
+
+Sa terminal:
+
+```bash
+git add .github/workflows/supabase-keepalive.yml
+git commit -m "Add automatic Supabase database health check"
+git push origin main
+```
+
+## Step 4 — I-test kung gumagana
+
+Sa GitHub repository:
+
+1. Click **Actions**.
+2. Piliin ang **Supabase Keep Alive**.
+3. Click **Run workflow**.
+4. Buksan ang completed run at hanapin ang `Supabase database query successful.`
+
+<row align="center" gap={2}>
+  <icon name="check-circle" color="success"/>
+  **Kapag successful:** Nakakagawa ng actual database query ang workflow.
+</row>
+
+Kung `401`, `403`, o ibang error, kailangan nating ayusin ang API credentials o database permissions. Hindi sapat na green lang ang GitHub workflow; dapat successful ang database query.
+
+### Importanteng malaman
+
+Ang setup na ito ay pang-**prevent ng inactivity pausing**, hindi pang-automatic resume kapag paused na ang project. Kung naka-pause na, kailangan mo pa ring i-resume sa Supabase Dashboard.
+
+Kapag na-set up at na-push mo na ito, automatic nang tatakbo ang scheduled checks nang hindi kailangang buksan ang laptop mo. Hindi pa rin ito garantiya na hindi magpa-pause ang Free Plan project.
