@@ -17,7 +17,7 @@ type Sale = { id: string; orderDate: string; orderNumber: string; externalOrderI
 type ExpenseMini = { category: string; totalCents: number; amountPaidCents: number };
 type Movement = { id: string; productId: string; productName: string; sku: string; orderId: string | null; movementType: string; quantityDelta: number; reason: string; createdAt: string };
 type FinanceResponse = { orders: Omit<Sale, "items">[]; items: SaleItem[]; products: Product[]; expenses: ExpenseMini[]; movements: Movement[] };
-type SaleLineDraft = { productId: string; quantity: string; unitPrice: string };
+type SaleLineDraft = { productId: string; productName: string; quantity: string; unitPrice: string };
 type SaleDraft = { orderDate: string; orderNumber: string; customerName: string; salesChannel: string; orderStatus: string; paymentStatus: string; paymentMethod: string; shippingMethod: string; shippingFee: string; voucherDiscount: string; cashierDiscount: string; actualShippingFee: string; transactionFee: string; enstackVoucher: string; amountPaid: string; notes: string; items: SaleLineDraft[] };
 type ProductDraft = { name: string; sku: string; variant: string; cost: string; sellingPrice: string; stockQuantity: string; lowStockThreshold: string };
 type FinanceSummary = { grossSales: number; netSales: number; paid: number; receivables: number; cogs: number; expenses: number; expensePaid: number; grossProfit: number; netProfit: number; cashBalance: number };
@@ -41,7 +41,7 @@ const monthEnd = (month: string) => {
   if (!match) return today();
   return new Date(Date.UTC(Number(match[1]), Number(match[2]), 0)).toISOString().slice(0, 10);
 };
-const blankSale = (): SaleDraft => ({ orderDate: today(), orderNumber: "", customerName: "", salesChannel: "Enstack", orderStatus: "Completed", paymentStatus: "Paid", paymentMethod: "GCash", shippingMethod: "", shippingFee: "", voucherDiscount: "", cashierDiscount: "", actualShippingFee: "", transactionFee: "", enstackVoucher: "", amountPaid: "", notes: "", items: [{ productId: "", quantity: "1", unitPrice: "" }] });
+const blankSale = (): SaleDraft => ({ orderDate: today(), orderNumber: "", customerName: "", salesChannel: "Enstack", orderStatus: "Completed", paymentStatus: "Paid", paymentMethod: "GCash", shippingMethod: "", shippingFee: "", voucherDiscount: "", cashierDiscount: "", actualShippingFee: "", transactionFee: "", enstackVoucher: "", amountPaid: "", notes: "", items: [{ productId: "", productName: "", quantity: "1", unitPrice: "" }] });
 const blankProduct = (): ProductDraft => ({ name: "", sku: "", variant: "", cost: "", sellingPrice: "", stockQuantity: "0", lowStockThreshold: "5" });
 
 export function FinanceSuite({
@@ -154,22 +154,121 @@ export function FinanceSuite({
   const draftMoney = (cents: number) => cents === 0 ? "" : String(cents / 100);
   const openSale = (order: Sale) => {
     setEditingSale(order.id);
-    setSaleDraft({ orderDate: order.orderDate, orderNumber: order.orderNumber, customerName: order.customerName, salesChannel: order.salesChannel, orderStatus: order.orderStatus, paymentStatus: order.paymentStatus, paymentMethod: order.paymentMethod, shippingMethod: order.shippingMethod, shippingFee: draftMoney(order.shippingFeeCents), voucherDiscount: draftMoney(order.voucherDiscountCents), cashierDiscount: draftMoney(order.cashierDiscountCents), actualShippingFee: draftMoney(order.actualShippingFeeCents), transactionFee: draftMoney(order.transactionFeeCents), enstackVoucher: draftMoney(order.enstackVoucherCents), amountPaid: draftMoney(order.amountPaidCents), notes: order.notes, items: order.items.filter((item) => item.productId).map((item) => ({ productId: item.productId!, quantity: String(item.quantity), unitPrice: String(item.unitPriceCents / 100) })) });
+    setSaleDraft({ orderDate: order.orderDate, orderNumber: order.orderNumber, customerName: order.customerName, salesChannel: order.salesChannel, orderStatus: order.orderStatus, paymentStatus: order.paymentStatus, paymentMethod: order.paymentMethod, shippingMethod: order.shippingMethod, shippingFee: draftMoney(order.shippingFeeCents), voucherDiscount: draftMoney(order.voucherDiscountCents), cashierDiscount: draftMoney(order.cashierDiscountCents), actualShippingFee: draftMoney(order.actualShippingFeeCents), transactionFee: draftMoney(order.transactionFeeCents), enstackVoucher: draftMoney(order.enstackVoucherCents), amountPaid: draftMoney(order.amountPaidCents), notes: order.notes, items: order.items.map((item) => ({ productId: item.productId ?? "", productName: item.productName, quantity: String(item.quantity), unitPrice: String(item.unitPriceCents / 100) })) });
     setSaleDialog(true);
   };
   const openNewProduct = () => { setEditingProduct(null); setProductDraft(blankProduct()); setProductDialog(true); };
   const openProduct = (product: Product) => { setEditingProduct(product.id); setProductDraft({ name: product.name, sku: product.sku, variant: product.variant, cost: String(product.costCents / 100), sellingPrice: String(product.sellingPriceCents / 100), stockQuantity: String(product.stockQuantity), lowStockThreshold: String(product.lowStockThreshold) }); setProductDialog(true); };
 
   const saveSale = async (event: FormEvent) => {
-    event.preventDefault(); setSaving(true);
+    event.preventDefault();
+
+    if (saving) return;
+
+    if (!saleDraft.items.length) {
+      toast.error("Add at least one product.");
+      return;
+    }
+
+    const items = saleDraft.items.map((item) => {
+      const typedName = item.productName.trim();
+
+      const matchedProduct = data.products.find(
+        (product) => product.id === item.productId
+      ) ?? data.products.find(
+        (product) =>
+          product.name.trim().toLowerCase() === typedName.toLowerCase() &&
+          typedName.length > 0
+      );
+
+      return {
+        productId: matchedProduct?.id ?? null,
+        productName: matchedProduct?.name ?? typedName,
+        quantity: Number(item.quantity),
+        unitPrice: Number(item.unitPrice),
+        rawQuantity: item.quantity,
+        rawPrice: item.unitPrice,
+      };
+    });
+
+    for (const [index, item] of items.entries()) {
+      if (!item.productName.trim()) {
+        toast.error(`Item ${index + 1}: Enter a product name.`);
+        return;
+      }
+
+      if (
+        !item.rawQuantity.trim() ||
+        !Number.isInteger(item.quantity) ||
+        item.quantity <= 0
+      ) {
+        toast.error(`Item ${index + 1}: Invalid quantity.`);
+        return;
+      }
+
+      if (
+        !item.rawPrice.trim() ||
+        !Number.isFinite(item.unitPrice) ||
+        item.unitPrice < 0
+      ) {
+        toast.error(`Item ${index + 1}: Invalid price.`);
+        return;
+      }
+    }
+
+    setSaving(true);
+
     try {
-      const response = await fetch("/api/sales-data", { method: editingSale ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ resource: "order", id: editingSale, ...saleDraft }) });
-      const result = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(result.error ?? "Couldn’t save sale");
-      await loadData(); setSaleDialog(false); toast.success(editingSale ? "Sale updated" : "Sale added");
-    } catch (error) { toast.error(error instanceof Error ? error.message : "Couldn’t save sale."); }
-    finally { setSaving(false); }
+      const payload = {
+        ...saleDraft,
+        resource: "order",
+        ...(editingSale ? { id: editingSale } : {}),
+        items: items.map((item) => ({
+          productId: item.productId,
+          productName: item.productName,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+        })),
+      };
+
+      const response = await fetch("/api/sales-data", {
+        method: editingSale ? "PATCH" : "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json() as {
+        error?: string;
+        details?: Array<{ field: string; message: string }>;
+      };
+
+      if (!response.ok) {
+        throw new Error(
+          result.details?.[0]
+            ? `${result.details[0].field}: ${result.details[0].message}`
+            : result.error ?? "Couldn't save sale."
+        );
+      }
+
+      await loadData();
+      setSaleDialog(false);
+
+      toast.success(
+        editingSale ? "Sale updated" : "Sale added successfully"
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Couldn't save sale."
+      );
+    } finally {
+      setSaving(false);
+    }
   };
+
   const saveProduct = async (event: FormEvent) => {
     event.preventDefault(); setSaving(true);
     try {
@@ -1203,7 +1302,7 @@ function SaleDialog({ open, setOpen, draft, setDraft, products, editing, saving,
                       ...draft,
                       items: [
                         ...draft.items,
-                        { productId: "", quantity: "1", unitPrice: "" },
+                        { productId: "", productName: "", quantity: "1", unitPrice: "" },
                       ],
                     })
                   }
@@ -1226,13 +1325,21 @@ function SaleDialog({ open, setOpen, draft, setDraft, products, editing, saving,
                   <div style={{ width: "100%", minWidth: 0 }}>
                     <ProductPicker
                       value={item.productId}
+                      productName={item.productName}
                       products={products}
+                      onNameChange={(productName) =>
+                        updateLine(index, {
+                          productName,
+                          productId: "",
+                        })
+                      }
                       onChange={(productId) => {
                         const product = products.find(
                           (entry) => entry.id === productId,
                         );
                         updateLine(index, {
                           productId,
+                          productName: product?.name ?? item.productName,
                           unitPrice: product
                             ? String(product.sellingPriceCents / 100)
                             : "",
@@ -1268,16 +1375,19 @@ function SaleDialog({ open, setOpen, draft, setDraft, products, editing, saving,
                       type="button"
                       variant="ghost"
                       size="icon"
-                      disabled={draft.items.length === 1}
-                      onClick={() =>
-                        setDraft({
-                          ...draft,
-                          items: draft.items.filter(
-                            (_, position) => position !== index,
-                          ),
-                        })
-                      }
-                    >
+                      disabled={
+                saving ||
+                draft.items.some(
+                  (item) =>
+                    !item.productName.trim() ||
+                    !item.quantity.trim() ||
+                    !Number.isInteger(Number(item.quantity)) ||
+                    Number(item.quantity) <= 0 ||
+                    !item.unitPrice.trim() ||
+                    !Number.isFinite(Number(item.unitPrice)) ||
+                    Number(item.unitPrice) < 0
+                )
+              }>
                       <Trash2 size={15} />
                     </Button>
                   </div>
@@ -1376,7 +1486,17 @@ function SaleDialog({ open, setOpen, draft, setDraft, products, editing, saving,
             <Button
               type="submit"
               className="primary-button"
-              disabled={saving || !products.length}
+              disabled={
+                saving ||
+                !products.length ||
+                draft.items.some(
+                  (item) =>
+                    !item.productId ||
+                    !products.some(
+                      (product) => product.id === item.productId
+                    )
+                )
+              }
             >
               {saving && <Loader2 className="spin" size={16} />}
               {editing ? "Save changes" : "Add sale"}
@@ -1461,90 +1581,104 @@ function Money({ value, onChange, required = false }: { value: string; onChange:
 
 function ProductPicker({
   value,
+  productName,
   products,
   onChange,
+  onNameChange,
 }: {
   value: string;
+  productName: string;
   products: Product[];
   onChange: (productId: string) => void;
+  onNameChange: (productName: string) => void;
 }) {
-  const selected = products.find((product) => product.id === value);
-  const selectedLabel = selected
-    ? `${selected.name}${selected.variant ? ` · ${selected.variant}` : ""}${selected.stockQuantity > 0 ? ` (${selected.stockQuantity} stock)` : ""}`
-    : "";
-
-  const [query, setQuery] = useState(selectedLabel);
+  const [query, setQuery] = useState(productName);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setQuery(selectedLabel);
-  }, [selectedLabel]);
+    setQuery(productName);
+  }, [productName]);
 
   useEffect(() => {
     const close = (event: globalThis.MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
     };
+
     document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+
+    return () => {
+      document.removeEventListener("mousedown", close);
+    };
   }, []);
 
-  const filteredProducts = useMemo(() => {
+  const filteredProducts = products.filter((product) => {
     const search = query.trim().toLowerCase();
-    if (!search || selectedLabel.toLowerCase() === search) return products;
 
-    return products.filter((product) => {
-      const label = `${product.name} ${product.variant} ${product.sku}`.toLowerCase();
-      return label.includes(search);
-    });
-  }, [products, query, selectedLabel]);
+    if (!search) return true;
+
+    return [
+      product.name,
+      product.variant,
+      product.sku,
+    ].join(" ").toLowerCase().includes(search);
+  });
 
   const choose = (product: Product) => {
-    const label = `${product.name}${product.variant ? ` · ${product.variant}` : ""}${product.stockQuantity > 0 ? ` (${product.stockQuantity} stock)` : ""}`;
-    setQuery(label);
-    setOpen(false);
+    setQuery(product.name);
+    onNameChange(product.name);
     onChange(product.id);
+    setOpen(false);
   };
 
   return (
-    <div ref={rootRef} style={{ position: "relative", width: "100%", minWidth: 0 }}>
+    <div
+      ref={rootRef}
+      style={{
+        position: "relative",
+        width: "100%",
+        minWidth: 0,
+      }}
+    >
       <div
         style={{
           display: "grid",
           gridTemplateColumns: "minmax(0, 1fr) 44px",
-          alignItems: "stretch",
-          width: "100%",
-          minWidth: 0,
         }}
       >
         <Input
           value={query}
-          placeholder="Type product name"
+          placeholder="Type product name or choose from list"
           onChange={(event) => {
-            setQuery(event.target.value);
-            setOpen(false);
-            if (value) onChange("");
+            const text = event.target.value;
+
+            setQuery(text);
+            onNameChange(text);
+            onChange("");
+            setOpen(true);
           }}
+          onFocus={() => setOpen(true)}
           style={{
-            width: "100%",
             minWidth: 0,
             borderTopRightRadius: 0,
             borderBottomRightRadius: 0,
           }}
         />
+
         <button
           type="button"
-          aria-label="Show product list"
+          aria-label="Show products"
           onClick={() => setOpen((current) => !current)}
           style={{
             display: "grid",
             placeItems: "center",
             border: "1px solid #303530",
-            borderLeft: 0,
-            borderRadius: "0 12px 12px 0",
             background: "#101310",
             color: "#aeb4ac",
             cursor: "pointer",
+            borderRadius: "0 12px 12px 0",
           }}
         >
           <ChevronDown size={18} />
@@ -1564,43 +1698,41 @@ function ProductPicker({
             border: "1px solid #303530",
             borderRadius: 12,
             background: "#101310",
-            boxShadow: "0 14px 34px rgba(0,0,0,.38)",
             padding: 6,
           }}
         >
           {filteredProducts.length ? (
-            filteredProducts.map((product) => {
-              const label = `${product.name}${product.variant ? ` · ${product.variant}` : ""}${product.stockQuantity > 0 ? ` (${product.stockQuantity} stock)` : ""}`;
-              return (
-                <button
-                  key={product.id}
-                  type="button"
-                  onClick={() => choose(product)}
-                  style={{
-                    display: "block",
-                    width: "100%",
-                    border: 0,
-                    borderRadius: 9,
-                    background: "transparent",
-                    padding: "10px 12px",
-                    color: "#e8eae4",
-                    textAlign: "left",
-                    cursor: "pointer",
-                  }}
-                  onMouseEnter={(event) => {
-                    event.currentTarget.style.background = "#1b1f1b";
-                  }}
-                  onMouseLeave={(event) => {
-                    event.currentTarget.style.background = "transparent";
-                  }}
-                >
-                  {label}
-                </button>
-              );
-            })
+            filteredProducts.map((product) => (
+              <button
+                key={product.id}
+                type="button"
+                onClick={() => choose(product)}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  border: 0,
+                  borderRadius: 9,
+                  background: "transparent",
+                  padding: "10px 12px",
+                  color: "#e8eae4",
+                  textAlign: "left",
+                  cursor: "pointer",
+                }}
+              >
+                {product.name}
+                {product.variant ? ` · ${product.variant}` : ""}
+                {` (${product.stockQuantity} stock)`}
+              </button>
+            ))
           ) : (
-            <div style={{ padding: "10px 12px", color: "#7f877d", fontSize: 13 }}>
-              No matching products
+            <div
+              style={{
+                padding: 12,
+                fontSize: 13,
+                color: "#aeb4ac",
+              }}
+            >
+              Custom product: {query}
             </div>
           )}
         </div>
