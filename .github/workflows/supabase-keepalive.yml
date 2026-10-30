@@ -30,17 +30,17 @@ jobs:
             --output /tmp/supabase-response.json \
             --write-out "%{http_code}" \
             --max-time 30 \
-            --get \
-            --data-urlencode "select=id" \
-            --data-urlencode "limit=1" \
-            "$SUPABASE_URL/rest/v1/products" \
+            -X POST \
+            "$SUPABASE_URL/rest/v1/rpc/peakathlete_health_check" \
             -H "apikey: $SUPABASE_ANON_KEY" \
-            -H "Authorization: Bearer $SUPABASE_ANON_KEY")
+            -H "Content-Type: application/json" \
+            --data '{}')
 
-          if [ "$STATUS" != "200" ] && [ "$STATUS" != "206" ]; then
-            echo "Supabase database check failed. HTTP $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "Database check failed. HTTP $STATUS"
             cat /tmp/supabase-response.json
             exit 1
           fi
 
           echo "Supabase database query successful."
+          cat /tmp/supabase-response.json
